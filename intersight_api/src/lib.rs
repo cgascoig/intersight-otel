@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 #[macro_use]
 extern crate log;
 
+#[derive(Clone)]
 pub struct Client {
     private_key: PKey<Private>,
     key_id: String,

@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use opentelemetry::metrics;
 use opentelemetry::sdk::export;
 use opentelemetry::sdk::metrics::PushController;
@@ -5,7 +6,9 @@ use opentelemetry::sdk::metrics::PushController;
 #[macro_use]
 extern crate log;
 
+mod config;
 mod intersight_poller;
+mod metric_merger;
 
 const KEY_ID: &str = include_str!("../../creds/intersight-cgascoig-20200423.keyid.txt");
 const SECRET_KEY: &[u8] = include_bytes!("../../creds/intersight-cgascoig-20200423.pem");
@@ -14,45 +17,34 @@ const SECRET_KEY: &[u8] = include_bytes!("../../creds/intersight-cgascoig-202004
 // const SECRET_KEY: &[u8] = include_bytes!("../../creds/intersight-cgascoig-v3-20220329.pem");
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     info!("starting up");
     info!("Using key_id {}", KEY_ID);
 
+    let config = config::GlobalConfig::new().context("Unable to load config")?;
+    info!("Config: {:?}", config);
+
     let _ctrl = init_metrics_stdout()?;
 
     let client = intersight_api::Client::from_key_bytes(KEY_ID, SECRET_KEY, None)?;
 
-    let poller_handle = tokio::spawn(async move {
-        intersight_poller::start_poller(&client).await;
-    });
+    let (metric_chan_tx, metric_chan_rx) = tokio::sync::mpsc::channel(32);
 
-    // let response = client
-    //     .post(
-    //         "api/v1/ntp/Policies",
-    //         serde_json::json!({
-    //             "Name": "cg-rust-test",
-    //             "Enabled": true,
-    //             "Organization": {
-    //                 "ClassId":"mo.MoRef",
-    //                 "ObjectType": "organization.Organization",
-    //                 "Selector": "Name eq \'default\'"
-    //             },
-    //             "NtpServers": ["1.1.1.1"],
-    //         }),
-    //     )
-    //     .await?;
+    let merge_handle = metric_merger::merge_metrics(metric_chan_rx);
 
-    // let response = client.get("api/v1/ntp/Policies").await?;
+    if let Some(poller_configs) = config.pollers {
+        for poller_config in poller_configs {
+            intersight_poller::start_intersight_poller(
+                metric_chan_tx.clone(),
+                &client,
+                &poller_config,
+            )?;
+        }
+    }
 
-    // if let serde_json::Value::Array(ntp_policies) = &response["Results"] {
-    //     for ntp_pol in ntp_policies {
-    //         println!("{}", ntp_pol["Name"])
-    //     }
-    // }
-
-    poller_handle.await?;
+    merge_handle.await?;
 
     Ok(())
 }

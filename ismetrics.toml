@@ -1,0 +1,9 @@
+[[pollers]]
+name = "virtual_machine_count"
+api_query = "api/v1/virtualization/VirtualMachines?$count=true"
+aggregator = "result_count"
+
+[[pollers]]
+name = "ntp_policy_count"
+api_query = "api/v1/ntp/Policies?$count=true"
+aggregator = "result_counta"

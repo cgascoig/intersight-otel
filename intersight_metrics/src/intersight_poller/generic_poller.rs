@@ -5,7 +5,7 @@ use serde_json::Value;
 pub async fn poll(
     client: &Client,
     query: &str,
-    agg: &impl Aggregator,
+    agg: &(dyn Aggregator + Sync + Send),
 ) -> Result<Vec<IntersightMetric>, PollerError> {
     let response = client.get(query).await.map_err(PollerError::APIError)?;
 
@@ -71,9 +71,11 @@ impl Aggregator for ResultCountAggregator {
             if let Some(c) = c.as_i64() {
                 count = c;
             } else {
+                warn!("Unexpected type for result count");
                 return Vec::new();
             }
         } else {
+            warn!("'Count' field not present in API response. Did you mean to include '$count=true' in the API query?");
             return Vec::new();
         }
 

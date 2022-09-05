@@ -1,101 +1,59 @@
-use generic_poller::{ResultCountAggregator, ResultCountingAggregator};
+use anyhow::{bail, Result};
+use generic_poller::Aggregator;
 use intersight_api::Client;
-use opentelemetry::{global, Value};
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
-use tokio::time;
+use opentelemetry::Value;
+use tokio::{sync::mpsc::Sender, task::JoinHandle, time};
+
+use crate::config::PollerConfig;
 
 mod generic_poller;
 
 #[derive(Debug)]
 pub struct IntersightMetric {
-    name: String,
-    value: Value,
+    pub name: String,
+    pub value: Value,
 }
 
-pub async fn start_poller(client: &Client) {
-    let intersight_metrics: HashMap<String, Value> = HashMap::new();
-    let intersight_metrics = Arc::new(Mutex::new(intersight_metrics));
-    let mut otel_observers = HashMap::new();
-
-    //We run the pollers once first to get the metric names
-    let new_metrics = run_polls(client).await;
-
-    let meter = global::meter("intersight");
-
-    //Create an otel observer for each metric
-    for metric in new_metrics {
-        let intersight_metrics_ref = intersight_metrics.clone();
-
-        let metric_name = metric.name.clone();
-        otel_observers.insert(
-            metric.name.clone(),
-            meter
-                .i64_value_observer(metric.name.clone(), move |r| {
-                    let im = intersight_metrics_ref.lock().unwrap();
-                    let metric = im.get(&metric_name);
-                    if let Some(metric) = metric {
-                        if let Value::I64(metric) = metric {
-                            r.observe(*metric, &[]);
-                        }
-                    }
-                })
-                .init(),
-        );
-
-        let mut intersight_metrics = intersight_metrics.lock().unwrap();
-        intersight_metrics.insert(metric.name.clone(), metric.value);
+fn get_aggregator_for_config(config: &PollerConfig) -> Result<Box<dyn Aggregator + Sync + Send>> {
+    match config.aggregator.as_str() {
+        "result_count" => Ok(Box::new(generic_poller::ResultCountAggregator::new(
+            config.name.clone(),
+        ))),
+        "count_results" => Ok(Box::new(generic_poller::ResultCountingAggregator::new(
+            config.name.clone(),
+        ))),
+        _ => bail!(format!("Invalid aggregator {}", config.aggregator)),
     }
+}
 
-    let mut interval = time::interval(time::Duration::from_secs(10));
-    interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
-    interval.tick().await;
-    loop {
-        interval.tick().await;
+pub fn start_intersight_poller(
+    tx: Sender<IntersightMetric>,
+    client: &Client,
+    config: &PollerConfig,
+) -> Result<JoinHandle<()>> {
+    let client = (*client).clone();
+    let interval = config.interval();
+    let query = config.api_query.clone();
 
-        let new_metrics = run_polls(client).await;
-        let mut intersight_metrics = intersight_metrics.lock().unwrap();
-        intersight_metrics.clear();
-        for metric in new_metrics {
-            intersight_metrics.insert(metric.name, metric.value);
+    let aggregator = get_aggregator_for_config(&config)?;
+
+    let handle = tokio::spawn(async move {
+        let mut interval = time::interval(time::Duration::from_secs(interval));
+
+        loop {
+            interval.tick().await;
+
+            let poll_result = generic_poller::poll(&client, &query, aggregator.as_ref()).await;
+
+            if let Ok(r) = poll_result {
+                for metric in r {
+                    tx.send(metric).await.unwrap();
+                }
+            } else if let Err(err) = poll_result {
+                error!("error while polling Intersight: {}", err);
+            }
         }
-    }
-}
+    });
 
-async fn run_polls(client: &Client) -> Vec<IntersightMetric> {
-    info!("Running Intersight pollers");
-
-    let mut ret: Vec<IntersightMetric> = Vec::new();
-
-    let poll_result = generic_poller::poll(
-        client,
-        "api/v1/ntp/Policies",
-        &ResultCountingAggregator::new("ntp_policy_count".to_string()),
-    )
-    .await;
-
-    if let Ok(r) = poll_result {
-        ret.extend(r);
-    } else if let Err(err) = poll_result {
-        error!("error while polling Intersight: {}", err);
-    }
-
-    let poll_result = generic_poller::poll(
-        client,
-        "api/v1/virtualization/VirtualMachines?$count=true",
-        &ResultCountAggregator::new("virtual_machine_count".to_string()),
-    )
-    .await;
-
-    if let Ok(r) = poll_result {
-        ret.extend(r);
-    } else if let Err(err) = poll_result {
-        error!("error while polling Intersight: {}", err);
-    }
-
-    info!("Finished running Intersight pollers");
-
-    return ret;
+    Ok(handle)
 }
