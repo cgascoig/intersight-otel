@@ -1,0 +1,11 @@
+[project]
+id = "com.cisco.cgascoig.intersight-metrics"
+name = "Intersight Metrics"
+version = "1.0.0"
+
+[[build.buildpacks]]
+uri = "docker.io/paketocommunity/rust"
+
+[[build.env]]
+name = "BP_CARGO_WORKSPACE_MEMBERS"
+value = "intersight_metrics"
