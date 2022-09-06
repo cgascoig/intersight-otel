@@ -3,5 +3,5 @@ COPY . .
 RUN cargo build --release
 
 FROM debian:buster-slim
-COPY --from=builder ./target/release/ismetrics ./target/release/ismetrics
-CMD ["/target/release/ismetrics"]
+COPY --from=builder ./target/release/intersight_metrics ./target/release/intersight_metrics
+CMD ["/target/release/intersight_metrics"]
