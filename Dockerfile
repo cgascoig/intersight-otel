@@ -3,5 +3,5 @@ COPY . .
 RUN cargo build --release
 
 FROM debian:buster-slim
-COPY --from=builder ./target/release/docker ./target/release/docker
-CMD ["/target/release/docker"]
+COPY --from=builder ./target/release/ismetrics ./target/release/ismetrics
+CMD ["/target/release/ismetrics"]
