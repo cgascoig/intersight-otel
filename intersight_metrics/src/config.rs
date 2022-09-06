@@ -5,6 +5,8 @@ use std::collections::HashMap;
 #[derive(Debug, Deserialize, Clone)]
 #[allow(unused)]
 pub struct GlobalConfig {
+    pub key_file: String,
+    pub key_id: String,
     pub pollers: Option<Vec<PollerConfig>>,
 }
 

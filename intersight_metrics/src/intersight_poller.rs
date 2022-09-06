@@ -35,7 +35,7 @@ pub fn start_intersight_poller(
     let interval = config.interval();
     let query = config.api_query.clone();
 
-    let aggregator = get_aggregator_for_config(&config)?;
+    let aggregator = get_aggregator_for_config(config)?;
 
     let handle = tokio::spawn(async move {
         let mut interval = time::interval(time::Duration::from_secs(interval));

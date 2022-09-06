@@ -11,7 +11,7 @@ pub async fn poll(
 
     let ret = agg.aggregate(response);
 
-    return Ok(ret);
+    Ok(ret)
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -31,7 +31,7 @@ pub struct ResultCountingAggregator {
 
 impl ResultCountingAggregator {
     pub fn new(name: String) -> ResultCountingAggregator {
-        return ResultCountingAggregator { name: name };
+        ResultCountingAggregator { name }
     }
 }
 
@@ -60,7 +60,7 @@ pub struct ResultCountAggregator {
 
 impl ResultCountAggregator {
     pub fn new(name: String) -> ResultCountAggregator {
-        return ResultCountAggregator { name: name };
+        ResultCountAggregator { name }
     }
 }
 
