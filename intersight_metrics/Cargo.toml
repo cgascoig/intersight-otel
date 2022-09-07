@@ -15,6 +15,7 @@ thiserror = "1.0.32"
 anyhow = "1.0.63"
 config = "0.13.2"
 serde = "1.0.144"
+clap = { version = "3.2.20", features = ["derive"] }
 
 #Add opentelemetry
 opentelemetry = { version = "0.17.0", features = ["rt-tokio", "metrics"] }

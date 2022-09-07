@@ -1,3 +1,4 @@
+use clap::Parser;
 use config::{Config, ConfigError, File};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -12,8 +13,10 @@ pub struct GlobalConfig {
 
 impl GlobalConfig {
     pub fn new() -> Result<Self, ConfigError> {
+        let args = Args::parse();
+
         let c = Config::builder()
-            .add_source(File::with_name("ismetrics"))
+            .add_source(File::with_name(&args.config_file))
             .build()?;
 
         c.try_deserialize()
@@ -38,4 +41,11 @@ impl PollerConfig {
             _ => 10,
         }
     }
+}
+
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    #[clap(short, long, value_parser, default_value_t = String::from("ismetrics"))]
+    config_file: String,
 }
