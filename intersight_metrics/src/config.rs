@@ -8,6 +8,7 @@ use std::collections::HashMap;
 pub struct GlobalConfig {
     pub key_file: String,
     pub key_id: String,
+    pub otel_collector_endpoint: String,
     pub pollers: Option<Vec<PollerConfig>>,
 }
 

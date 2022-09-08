@@ -1,6 +1,5 @@
 use crate::intersight_poller::IntersightMetric;
 use opentelemetry::metrics;
-use opentelemetry::sdk::export;
 use opentelemetry::sdk::metrics::PushController;
 use opentelemetry::{global, metrics::ValueObserver, Value};
 use opentelemetry_otlp::{ExportConfig, WithExportConfig};
@@ -11,9 +10,13 @@ use std::{
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 
-pub fn start_metric_merger(mut metric_chan: Receiver<IntersightMetric>) -> JoinHandle<()> {
+pub fn start_metric_merger(
+    mut metric_chan: Receiver<IntersightMetric>,
+    otel_collector_endpoint: &str,
+) -> JoinHandle<()> {
+    let otel_collector_endpoint = String::from(otel_collector_endpoint);
     tokio::spawn(async move {
-        let _ctrl = init_metrics_otlp();
+        let _ctrl = init_metrics_otlp(&otel_collector_endpoint);
 
         let intersight_metrics: HashMap<String, Value> = HashMap::new();
         let intersight_metrics = Arc::new(Mutex::new(intersight_metrics));
@@ -54,9 +57,9 @@ pub fn start_metric_merger(mut metric_chan: Receiver<IntersightMetric>) -> JoinH
     })
 }
 
-fn init_metrics_otlp() -> metrics::Result<PushController> {
+fn init_metrics_otlp(otel_collector_endpoint: &str) -> metrics::Result<PushController> {
     let export_config = ExportConfig {
-        endpoint: "http://localhost:4317".to_string(),
+        endpoint: otel_collector_endpoint.to_string(),
         ..ExportConfig::default()
     };
     opentelemetry_otlp::new_pipeline()
@@ -69,18 +72,19 @@ fn init_metrics_otlp() -> metrics::Result<PushController> {
         .build()
 }
 
-use futures_util::{Stream, StreamExt as _};
-use std::time::Duration;
+// use futures_util::{Stream, StreamExt as _};
+// use std::time::Duration;
+// use opentelemetry::sdk::export;
 
-// Skip first immediate tick from tokio, not needed for async_std.
-fn delayed_interval(duration: Duration) -> impl Stream<Item = tokio::time::Instant> {
-    opentelemetry::util::tokio_interval_stream(duration).skip(1)
-}
+// // Skip first immediate tick from tokio, not needed for async_std.
+// fn delayed_interval(duration: Duration) -> impl Stream<Item = tokio::time::Instant> {
+//     opentelemetry::util::tokio_interval_stream(duration).skip(1)
+// }
 
-fn init_metrics_stdout() -> metrics::Result<PushController> {
-    let exporter = export::metrics::stdout(tokio::spawn, delayed_interval)
-        .with_period(Duration::from_secs(5))
-        .init();
+// fn init_metrics_stdout() -> metrics::Result<PushController> {
+//     let exporter = export::metrics::stdout(tokio::spawn, delayed_interval)
+//         .with_period(Duration::from_secs(5))
+//         .init();
 
-    Ok(exporter)
-}
+//     Ok(exporter)
+// }

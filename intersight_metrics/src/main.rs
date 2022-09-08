@@ -26,7 +26,8 @@ async fn main() -> Result<()> {
     // Create a multi-producer single-consumer channel for poller tasks to send metrics to the metric_merger task
     let (metric_chan_tx, metric_chan_rx) = tokio::sync::mpsc::channel(32);
 
-    let merge_handle = metric_merger::start_metric_merger(metric_chan_rx);
+    let merge_handle =
+        metric_merger::start_metric_merger(metric_chan_rx, &config.otel_collector_endpoint);
 
     // Start all the pollers based on the config file(s)
     if let Some(poller_configs) = config.pollers {
