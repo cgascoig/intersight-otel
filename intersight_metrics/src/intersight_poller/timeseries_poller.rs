@@ -4,6 +4,7 @@ use crate::config::TSPollerConfig;
 
 use super::IntersightMetric;
 use anyhow::Result;
+use chrono::{prelude::*, Duration};
 use intersight_api::Client;
 use serde_json::{json, Value};
 
@@ -21,7 +22,7 @@ pub async fn poll(client: &Client, config: &TSPollerConfig) -> Result<Vec<Inters
       "queryType": "groupBy",
       "dataSource": config.datasource,
       "dimensions": config.dimensions,
-      "intervals": [ "2022-09-06T00:00:00.000/2022-09-10T00:00:00.000" ],
+      "intervals": [ get_interval() ],
       "granularity": "all",
       "aggregations": aggregations,
     });
@@ -74,4 +75,11 @@ pub async fn poll(client: &Client, config: &TSPollerConfig) -> Result<Vec<Inters
     }
 
     Ok(ret)
+}
+
+fn get_interval() -> String {
+    // format!("2022-09-06T00:00:00.000/2022-09-10T00:00:00.000")
+    let end = Utc::now().to_rfc3339();
+    let start = (Utc::now() + Duration::minutes(-15)).to_rfc3339();
+    format!("{start}/{end}")
 }
