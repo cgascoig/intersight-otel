@@ -65,14 +65,22 @@ pub struct TSPollerConfig {
     interval: Option<u64>,
 }
 
+pub enum TSPollerType {
+    LastValue,
+    Sum,
+}
+
 impl TSPollerConfig {
     #[allow(unused)]
-    pub fn poller_type(&self) -> &str {
+    pub fn poller_type(&self) -> TSPollerType {
         if let Some(t) = &self.poller_type {
-            return t.as_str();
+            return match t.as_str() {
+                "sum" => TSPollerType::Sum,
+                _ => TSPollerType::LastValue,
+            };
         }
 
-        "last_value"
+        TSPollerType::LastValue
     }
 
     pub fn interval(&self) -> u64 {

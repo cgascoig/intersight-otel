@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
-use crate::config::TSPollerConfig;
+use crate::config::{TSPollerConfig, TSPollerType};
 
 use super::IntersightMetric;
 use anyhow::Result;
@@ -11,9 +11,14 @@ use serde_json::{json, Value};
 pub async fn poll(client: &Client, config: &TSPollerConfig) -> Result<Vec<IntersightMetric>> {
     let mut aggregations: Vec<HashMap<String, String>> = vec![];
 
+    let aggregation_type = match config.poller_type() {
+        TSPollerType::Sum => "longSum",
+        TSPollerType::LastValue => "longLast",
+    };
+
     for field_name in config.field_names.as_slice() {
         let mut aggregation: HashMap<String, String> = HashMap::new();
-        aggregation.insert(String::from("type"), String::from("longLast"));
+        aggregation.insert(String::from("type"), aggregation_type.to_string());
         aggregation.insert(String::from("name"), field_name.clone());
         aggregation.insert(String::from("fieldName"), field_name.clone());
         aggregations.push(aggregation);
@@ -23,7 +28,7 @@ pub async fn poll(client: &Client, config: &TSPollerConfig) -> Result<Vec<Inters
       "dataSource": config.datasource,
       "dimensions": config.dimensions,
       "intervals": [ get_interval() ],
-      "granularity": "all",
+      "granularity": {"type":"period","period":"PT5M","timeZone":"America/Los_Angeles", "origin":Utc::now().to_rfc3339()},
       "aggregations": aggregations,
     });
 
@@ -78,8 +83,9 @@ pub async fn poll(client: &Client, config: &TSPollerConfig) -> Result<Vec<Inters
 }
 
 fn get_interval() -> String {
-    // format!("2022-09-06T00:00:00.000/2022-09-10T00:00:00.000")
-    let end = Utc::now().to_rfc3339();
+    // The interval is always the 5 minute interval that started 15 minutes ago.
+    // This is to ensure that all the data complete in the Druid results.
+    let end = (Utc::now() + Duration::minutes(-10)).to_rfc3339();
     let start = (Utc::now() + Duration::minutes(-15)).to_rfc3339();
     format!("{start}/{end}")
 }
