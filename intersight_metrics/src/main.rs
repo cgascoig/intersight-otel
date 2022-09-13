@@ -40,6 +40,17 @@ async fn main() -> Result<()> {
         }
     }
 
+    // Start all the timeseries pollers based on the config file(s)
+    if let Some(tspoller_configs) = config.tspollers {
+        for tspoller_config in tspoller_configs {
+            intersight_poller::start_intersight_tspoller(
+                metric_chan_tx.clone(),
+                &client,
+                &tspoller_config,
+            )?;
+        }
+    }
+
     // Keep running until the metric_merger finishes (i.e. never)
     merge_handle.await?;
 

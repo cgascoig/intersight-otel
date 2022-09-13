@@ -10,6 +10,7 @@ pub struct GlobalConfig {
     pub key_id: String,
     pub otel_collector_endpoint: String,
     pub pollers: Option<Vec<PollerConfig>>,
+    pub tspollers: Option<Vec<TSPollerConfig>>,
 }
 
 impl GlobalConfig {
@@ -28,6 +29,8 @@ impl GlobalConfig {
 #[allow(unused)]
 pub struct PollerConfig {
     pub api_query: String,
+    pub api_method: Option<String>,
+    pub api_body: Option<String>,
     pub aggregator: String,
     pub aggregator_options: Option<HashMap<String, String>>,
     pub name: String,
@@ -49,4 +52,33 @@ impl PollerConfig {
 struct Args {
     #[clap(short, long, value_parser, default_value_t = String::from("ismetrics"))]
     config_file: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[allow(unused)]
+pub struct TSPollerConfig {
+    pub name: String,
+    pub datasource: String,
+    pub dimensions: Vec<String>,
+    pub field_names: Vec<String>,
+    poller_type: Option<String>,
+    interval: Option<u64>,
+}
+
+impl TSPollerConfig {
+    #[allow(unused)]
+    pub fn poller_type(&self) -> &str {
+        if let Some(t) = &self.poller_type {
+            return t.as_str();
+        }
+
+        "last_value"
+    }
+
+    pub fn interval(&self) -> u64 {
+        match self.interval {
+            Some(x) => x,
+            _ => 10,
+        }
+    }
 }

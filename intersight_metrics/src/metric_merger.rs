@@ -1,7 +1,7 @@
 use crate::intersight_poller::IntersightMetric;
-use opentelemetry::metrics;
 use opentelemetry::sdk::metrics::PushController;
 use opentelemetry::{global, metrics::ValueObserver, Value};
+use opentelemetry::{metrics, Key, KeyValue};
 use opentelemetry_otlp::{ExportConfig, WithExportConfig};
 use std::{
     collections::HashMap,
@@ -18,9 +18,9 @@ pub fn start_metric_merger(
     tokio::spawn(async move {
         let _ctrl = init_metrics_otlp(&otel_collector_endpoint);
 
-        let intersight_metrics: HashMap<String, Value> = HashMap::new();
+        let intersight_metrics: HashMap<String, Vec<IntersightMetric>> = HashMap::new();
         let intersight_metrics = Arc::new(Mutex::new(intersight_metrics));
-        let mut otel_observers = HashMap::<String, ValueObserver<i64>>::new();
+        let mut otel_observers = HashMap::<String, ValueObserver<f64>>::new();
         let meter = global::meter("intersight");
 
         info!("Starting metric merger task");
@@ -28,21 +28,47 @@ pub fn start_metric_merger(
             if let Some(metric) = metric_chan.recv().await {
                 info!("Received metric {} = {}", metric.name, metric.value);
 
+                let metric_name = metric.name.clone();
+
                 // if we haven't seen this metric before, create an otel observer for it
-                if !otel_observers.contains_key(&metric.name) {
-                    debug!("Adding new otel observer for metric {}", metric.name);
+                if !otel_observers.contains_key(&metric_name) {
+                    debug!("Adding new otel observer for metric {}", metric_name);
 
                     let intersight_metrics_ref = intersight_metrics.clone();
-                    let metric_name = metric.name.clone();
 
                     otel_observers.insert(
-                        metric.name.clone(),
+                        metric_name.clone(),
                         meter
-                            .i64_value_observer(metric_name.clone(), move |r| {
-                                let im = intersight_metrics_ref.lock().unwrap();
-                                let metric = im.get(&metric_name);
-                                if let Some(Value::I64(metric)) = metric {
-                                    r.observe(*metric, &[]);
+                            .f64_value_observer(metric.name.clone(), move |r| {
+                                trace!("i64_value_observer called");
+                                let mut im = intersight_metrics_ref.lock().unwrap();
+                                let metrics = im.get(&metric_name);
+                                if let Some(metrics) = metrics {
+                                    for metric in metrics {
+                                        if let Value::F64(metric_value) = metric.value {
+                                            trace!("value observed");
+
+                                            let mut attrs: Vec<KeyValue> = vec![];
+                                            for (key, value) in metric.attributes.clone() {
+                                                attrs.push(KeyValue {
+                                                    key: Key::from(key),
+                                                    value: Value::from(value),
+                                                })
+                                            }
+
+                                            trace!(
+                                                "observing value {} with attributes {:?}",
+                                                metric_value,
+                                                attrs.as_slice()
+                                            );
+                                            r.observe(metric_value, attrs.as_slice());
+                                        } else {
+                                            trace!("value not f64");
+                                        }
+                                    }
+                                    im.remove(&metric_name);
+                                } else {
+                                    trace!("value not Some");
                                 }
                             })
                             .init(),
@@ -51,7 +77,11 @@ pub fn start_metric_merger(
 
                 // update the intersight_metrics hashmap with the new value
                 let mut im = intersight_metrics.lock().unwrap();
-                im.insert(metric.name, metric.value);
+                if let Some(metrics) = im.get_mut(&metric.name) {
+                    metrics.push(metric);
+                } else {
+                    im.insert(metric.name.clone(), vec![metric]);
+                }
             }
         }
     })

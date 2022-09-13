@@ -5,9 +5,26 @@ use serde_json::Value;
 pub async fn poll(
     client: &Client,
     query: &str,
+    method: &Option<String>,
+    body: &Option<String>,
     agg: &(dyn Aggregator + Sync + Send),
 ) -> Result<Vec<IntersightMetric>, PollerError> {
-    let response = client.get(query).await.map_err(PollerError::APIError)?;
+    let method = (*method).clone().unwrap_or_else(|| "".to_string());
+    let method = method.as_str();
+
+    let body = match body {
+        Some(b) => b.as_str(),
+        _ => "",
+    };
+    let body = serde_json::from_str(body).map_err(|_| PollerError::ConfigError)?;
+
+    let response = match method {
+        "post" => client
+            .post(query, body)
+            .await
+            .map_err(PollerError::APIError)?,
+        _ => client.get(query).await.map_err(PollerError::APIError)?,
+    };
 
     let ret = agg.aggregate(response);
 
@@ -18,6 +35,9 @@ pub async fn poll(
 pub enum PollerError {
     #[error("error calling Intersight API")]
     APIError(IntersightError),
+
+    #[error("poller configuration error")]
+    ConfigError,
 }
 
 pub trait Aggregator {
@@ -44,10 +64,7 @@ impl Aggregator for ResultCountingAggregator {
             return Vec::new();
         }
 
-        let m = IntersightMetric {
-            name: self.name.clone(),
-            value: opentelemetry::Value::I64(count),
-        };
+        let m = IntersightMetric::new(&self.name, opentelemetry::Value::I64(count), None);
 
         vec![m]
     }
@@ -79,10 +96,7 @@ impl Aggregator for ResultCountAggregator {
             return Vec::new();
         }
 
-        let m = IntersightMetric {
-            name: self.name.clone(),
-            value: opentelemetry::Value::I64(count),
-        };
+        let m = IntersightMetric::new(&self.name, opentelemetry::Value::I64(count), None);
 
         vec![m]
     }
