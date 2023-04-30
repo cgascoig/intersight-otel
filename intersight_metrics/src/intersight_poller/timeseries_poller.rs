@@ -28,7 +28,7 @@ pub async fn poll(client: &Client, config: &TSPollerConfig) -> Result<Vec<Inters
       "dataSource": config.datasource,
       "dimensions": config.dimensions,
       "intervals": [ get_interval() ],
-      "granularity": {"type":"period","period":"PT5M","timeZone":"America/Los_Angeles", "origin":Utc::now().to_rfc3339()},
+      "granularity": {"type":"period","period":"PT5M","timeZone":"America/Los_Angeles"},
       "aggregations": aggregations,
     });
 
