@@ -1,6 +1,6 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
-use crate::config::{TSPollerConfig, TSPollerType};
+use crate::config::TSPollerConfig;
 
 use super::IntersightMetric;
 use anyhow::Result;
