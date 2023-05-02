@@ -3,6 +3,7 @@ use opentelemetry::sdk::metrics::PushController;
 use opentelemetry::{global, metrics::ValueObserver, Value};
 use opentelemetry::{metrics, Key, KeyValue};
 use opentelemetry_otlp::{ExportConfig, WithExportConfig};
+use std::time::Duration;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -94,6 +95,7 @@ fn init_metrics_otlp(otel_collector_endpoint: &str) -> metrics::Result<PushContr
     };
     opentelemetry_otlp::new_pipeline()
         .metrics(tokio::spawn, opentelemetry::util::tokio_interval_stream)
+        .with_period(Duration::from_secs(60))
         .with_exporter(
             opentelemetry_otlp::new_exporter()
                 .tonic()
