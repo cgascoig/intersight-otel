@@ -1,6 +1,7 @@
 use clap::Parser;
 use config::{Config, ConfigError, File};
 use serde::Deserialize;
+use serde_json::Value;
 use std::collections::HashMap;
 
 #[derive(Debug, Deserialize, Clone)]
@@ -61,6 +62,9 @@ pub struct TSPollerConfig {
     pub datasource: String,
     pub dimensions: Vec<String>,
     pub field_names: Vec<String>,
+    pub filter: Option<Value>,
+    pub aggregations: Option<Value>,
+    pub post_aggregations: Option<Value>,
     poller_type: Option<String>,
     interval: Option<u64>,
 }

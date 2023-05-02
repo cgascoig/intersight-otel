@@ -9,28 +9,59 @@ use intersight_api::Client;
 use serde_json::{json, Value};
 
 pub async fn poll(client: &Client, config: &TSPollerConfig) -> Result<Vec<IntersightMetric>> {
-    let mut aggregations: Vec<HashMap<String, String>> = vec![];
+    // let mut aggregations: Vec<HashMap<String, String>> = vec![];
 
-    let aggregation_type = match config.poller_type() {
-        TSPollerType::Sum => "longSum",
-        TSPollerType::LastValue => "longLast",
-    };
+    // let aggregation_type = match config.poller_type() {
+    //     TSPollerType::Sum => "longSum",
+    //     TSPollerType::LastValue => "longLast",
+    // };
 
-    for field_name in config.field_names.as_slice() {
-        let mut aggregation: HashMap<String, String> = HashMap::new();
-        aggregation.insert(String::from("type"), aggregation_type.to_string());
-        aggregation.insert(String::from("name"), field_name.clone());
-        aggregation.insert(String::from("fieldName"), field_name.clone());
-        aggregations.push(aggregation);
-    }
-    let body = json!(  {
-      "queryType": "groupBy",
-      "dataSource": config.datasource,
-      "dimensions": config.dimensions,
-      "intervals": [ get_interval() ],
-      "granularity": {"type":"period","period":"PT5M","timeZone":"America/Los_Angeles"},
-      "aggregations": aggregations,
-    });
+    // for field_name in config.field_names.as_slice() {
+    //     let mut aggregation: HashMap<String, String> = HashMap::new();
+    //     aggregation.insert(String::from("type"), aggregation_type.to_string());
+    //     aggregation.insert(String::from("name"), field_name.clone());
+    //     aggregation.insert(String::from("fieldName"), field_name.clone());
+    //     aggregations.push(aggregation);
+    // }
+    // let body = json!(  {
+    //   "queryType": "groupBy",
+    //   "dataSource": config.datasource,
+    //   "dimensions": config.dimensions,
+    //   "intervals": [ get_interval() ],
+    //   "granularity": {"type":"period","period":"PT5M","timeZone":"America/Los_Angeles"},
+    //   "aggregations": aggregations,
+    // });
+
+    // let response = client.post("api/v1/telemetry/GroupBys", body).await?;
+
+    let body = json!(
+        {
+            "queryType": "groupBy",
+            "dataSource": "hx",
+            "dimensions": ["deviceId"],
+            // "filter": {
+            //     "type": "and",
+            //     "fields": [
+            //         // {"type": "selector", "dimension": "deviceId", "value": "60193a716f72612d310fb526"},
+            //         {"type": "selector", "dimension": "node", "value": "allhosts"},
+            //         {"type": "selector", "dimension": "datastore", "value": "cluster"},
+            //     ]
+            // },
+            "filter": config.filter,
+            "granularity": {"type":"period","period":"PT5M","timeZone":"America/Los_Angeles"},
+            "intervals": [ get_interval() ],
+            // "aggregations": [
+            //     {"name":"read_ops_per_min","type":"longSum","fieldName":"sumReadOps"},
+            //     {"name":"write_ops_per_min","type":"longSum","fieldName":"sumWriteOps"},
+            // ],
+            // "postAggregations":[
+            //     {"type":"arithmetic","name":"read_ops","fn":"/","fields":[{"type":"fieldAccess","name":"read_ops_per_min","fieldName":"read_ops_per_min"},{"type":"constant","name":"const","value":300}]},
+            //     {"type":"arithmetic","name":"write_ops","fn":"/","fields":[{"type":"fieldAccess","name":"write_ops_per_min","fieldName":"write_ops_per_min"},{"type":"constant","name":"const","value":300}]}
+            // ],
+            "aggregations": config.aggregations,
+            "postAggregations": config.post_aggregations,
+        }
+    );
 
     let response = client.post("api/v1/telemetry/GroupBys", body).await?;
 
@@ -46,9 +77,13 @@ pub async fn poll(client: &Client, config: &TSPollerConfig) -> Result<Vec<Inters
     //   }
     // ]
 
+    info!("processing timeseries response: {}", response);
+
     let mut ret: Vec<IntersightMetric> = vec![];
     if let Value::Array(results) = response {
         for result in results {
+            info!("processing timeseries result: {}", result);
+
             if let Value::Object(event) = &result["event"] {
                 // Any field of the event that isn't a value (i.e. in field_names) is an attribute/dimension of the metrics
                 let mut attributes: BTreeMap<String, String> = BTreeMap::new();
@@ -59,7 +94,7 @@ pub async fn poll(client: &Client, config: &TSPollerConfig) -> Result<Vec<Inters
                 }
 
                 for field_name in config.field_names.as_slice() {
-                    if let Value::Number(value) = &event[field_name] {
+                    if let Some(Value::Number(value)) = event.get(field_name) {
                         let otel_value;
                         if let Some(value) = value.as_f64() {
                             otel_value = opentelemetry::Value::F64(value);
@@ -83,9 +118,9 @@ pub async fn poll(client: &Client, config: &TSPollerConfig) -> Result<Vec<Inters
 }
 
 fn get_interval() -> String {
-    // The interval is always the 5 minute interval that started 15 minutes ago.
+    // The interval is always the 5 minute interval that started 20 minutes ago.
     // This is to ensure that all the data complete in the Druid results.
-    let end = (Utc::now() + Duration::minutes(-10)).to_rfc3339();
-    let start = (Utc::now() + Duration::minutes(-15)).to_rfc3339();
+    let end = (Utc::now() + Duration::minutes(-15)).to_rfc3339();
+    let start = (Utc::now() + Duration::minutes(-20)).to_rfc3339();
     format!("{start}/{end}")
 }
