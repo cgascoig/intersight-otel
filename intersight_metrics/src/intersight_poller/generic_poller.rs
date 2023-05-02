@@ -16,7 +16,10 @@ pub async fn poll(
         Some(b) => b.as_str(),
         _ => "",
     };
-    let body = serde_json::from_str(body).map_err(|_| PollerError::ConfigError)?;
+    let body = match body {
+        "" => Value::Null,
+        _ => serde_json::from_str(body).map_err(|_| PollerError::ConfigError)?,
+    };
 
     let response = match method {
         "post" => client
