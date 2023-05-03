@@ -9,7 +9,7 @@ pub async fn poll(
     body: &Option<String>,
     agg: &(dyn Aggregator + Sync + Send),
 ) -> Result<Vec<IntersightMetric>, PollerError> {
-    let method = (*method).clone().unwrap_or_else(|| "".to_string());
+    let method = (*method).clone().unwrap_or_default();
     let method = method.as_str();
 
     let body = match body {
