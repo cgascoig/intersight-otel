@@ -67,7 +67,7 @@ impl Aggregator for ResultCountingAggregator {
             return Vec::new();
         }
 
-        let m = IntersightMetric::new(&self.name, opentelemetry::Value::I64(count), None);
+        let m = IntersightMetric::new(&self.name, opentelemetry::Value::F64(count as f64), None);
 
         vec![m]
     }
@@ -99,7 +99,7 @@ impl Aggregator for ResultCountAggregator {
             return Vec::new();
         }
 
-        let m = IntersightMetric::new(&self.name, opentelemetry::Value::I64(count), None);
+        let m = IntersightMetric::new(&self.name, opentelemetry::Value::F64(count as f64), None);
 
         vec![m]
     }
