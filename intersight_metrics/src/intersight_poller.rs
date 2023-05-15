@@ -1,4 +1,7 @@
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Mutex},
+};
 
 use anyhow::{bail, Result};
 use generic_poller::Aggregator;
@@ -54,6 +57,7 @@ pub fn start_intersight_poller(
     let query = config.api_query.clone();
     let method = config.api_method.clone();
     let body = config.api_body.clone();
+    let otel_attributes = Arc::new(Mutex::new(config.otel_attributes.clone()));
 
     let aggregator = get_aggregator_for_config(config)?;
 
@@ -67,7 +71,16 @@ pub fn start_intersight_poller(
                 generic_poller::poll(&client, &query, &method, &body, aggregator.as_ref()).await;
 
             if let Ok(r) = poll_result {
-                for metric in r {
+                for mut metric in r {
+                    {
+                        let otel_attributes = otel_attributes.lock().unwrap();
+                        if let Some(otel_attributes) = otel_attributes.clone() {
+                            for (k, v) in otel_attributes {
+                                metric.attributes.insert(k, v);
+                            }
+                        }
+                    }
+
                     tx.send(metric).await.unwrap();
                 }
             } else if let Err(err) = poll_result {
@@ -86,6 +99,7 @@ pub fn start_intersight_tspoller(
 ) -> Result<JoinHandle<()>> {
     let client = (*client).clone();
     let config = (*config).clone();
+    let otel_attributes = Arc::new(Mutex::new(config.otel_attributes.clone()));
 
     let handle = tokio::spawn(async move {
         let mut interval = time::interval(time::Duration::from_secs(config.interval()));
@@ -96,7 +110,12 @@ pub fn start_intersight_tspoller(
             let poll_result = timeseries_poller::poll(&client, &config).await;
 
             if let Ok(r) = poll_result {
-                for metric in r {
+                for mut metric in r {
+                    if let Some(otel_attributes) = otel_attributes.lock().unwrap().clone() {
+                        for (k, v) in otel_attributes {
+                            metric.attributes.insert(k, v);
+                        }
+                    }
                     tx.send(metric).await.unwrap();
                 }
             } else if let Err(err) = poll_result {

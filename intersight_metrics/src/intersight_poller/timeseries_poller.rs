@@ -9,73 +9,20 @@ use intersight_api::Client;
 use serde_json::{json, Value};
 
 pub async fn poll(client: &Client, config: &TSPollerConfig) -> Result<Vec<IntersightMetric>> {
-    // let mut aggregations: Vec<HashMap<String, String>> = vec![];
-
-    // let aggregation_type = match config.poller_type() {
-    //     TSPollerType::Sum => "longSum",
-    //     TSPollerType::LastValue => "longLast",
-    // };
-
-    // for field_name in config.field_names.as_slice() {
-    //     let mut aggregation: HashMap<String, String> = HashMap::new();
-    //     aggregation.insert(String::from("type"), aggregation_type.to_string());
-    //     aggregation.insert(String::from("name"), field_name.clone());
-    //     aggregation.insert(String::from("fieldName"), field_name.clone());
-    //     aggregations.push(aggregation);
-    // }
-    // let body = json!(  {
-    //   "queryType": "groupBy",
-    //   "dataSource": config.datasource,
-    //   "dimensions": config.dimensions,
-    //   "intervals": [ get_interval() ],
-    //   "granularity": {"type":"period","period":"PT5M","timeZone":"America/Los_Angeles"},
-    //   "aggregations": aggregations,
-    // });
-
-    // let response = client.post("api/v1/telemetry/GroupBys", body).await?;
-
     let body = json!(
         {
             "queryType": "groupBy",
             "dataSource": "hx",
             "dimensions": ["deviceId"],
-            // "filter": {
-            //     "type": "and",
-            //     "fields": [
-            //         // {"type": "selector", "dimension": "deviceId", "value": "60193a716f72612d310fb526"},
-            //         {"type": "selector", "dimension": "node", "value": "allhosts"},
-            //         {"type": "selector", "dimension": "datastore", "value": "cluster"},
-            //     ]
-            // },
             "filter": config.filter,
             "granularity": {"type":"period","period":"PT5M","timeZone":"America/Los_Angeles"},
             "intervals": [ get_interval() ],
-            // "aggregations": [
-            //     {"name":"read_ops_per_min","type":"longSum","fieldName":"sumReadOps"},
-            //     {"name":"write_ops_per_min","type":"longSum","fieldName":"sumWriteOps"},
-            // ],
-            // "postAggregations":[
-            //     {"type":"arithmetic","name":"read_ops","fn":"/","fields":[{"type":"fieldAccess","name":"read_ops_per_min","fieldName":"read_ops_per_min"},{"type":"constant","name":"const","value":300}]},
-            //     {"type":"arithmetic","name":"write_ops","fn":"/","fields":[{"type":"fieldAccess","name":"write_ops_per_min","fieldName":"write_ops_per_min"},{"type":"constant","name":"const","value":300}]}
-            // ],
             "aggregations": config.aggregations,
             "postAggregations": config.post_aggregations,
         }
     );
 
     let response = client.post("api/v1/telemetry/GroupBys", body).await?;
-
-    // Example response
-    // [
-    //   {
-    //     "version": "v1",
-    //     "timestamp": "2022-09-06T00:00:00.000Z",
-    //     "event": {
-    //       "usedStorageBytes": 3895694721024,
-    //       "clusterName": "CPOC-HX"
-    //     }
-    //   }
-    // ]
 
     info!("processing timeseries response: {}", response);
 
@@ -85,11 +32,15 @@ pub async fn poll(client: &Client, config: &TSPollerConfig) -> Result<Vec<Inters
             info!("processing timeseries result: {}", result);
 
             if let Value::Object(event) = &result["event"] {
-                // Any field of the event that isn't a value (i.e. in field_names) is an attribute/dimension of the metrics
+                // Apply dimension to attribute mapping
                 let mut attributes: BTreeMap<String, String> = BTreeMap::new();
-                for (k, v) in event {
-                    if !config.field_names.contains(k) {
-                        attributes.insert(k.clone(), v.to_string());
+                if let Some(otel_dimension_to_attribute_map) =
+                    &config.otel_dimension_to_attribute_map
+                {
+                    for (dimension_name, attribute_name) in otel_dimension_to_attribute_map {
+                        if let Some(v) = event.get(dimension_name) {
+                            attributes.insert(attribute_name.clone(), v.to_string());
+                        }
                     }
                 }
 

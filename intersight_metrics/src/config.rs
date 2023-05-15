@@ -35,6 +35,7 @@ pub struct PollerConfig {
     pub aggregator: String,
     pub aggregator_options: Option<HashMap<String, String>>,
     pub name: String,
+    pub otel_attributes: Option<HashMap<String, String>>,
 
     interval: Option<u64>, // interval is private with a getter because it might change to human strings like "5m" in the future
 }
@@ -67,6 +68,9 @@ pub struct TSPollerConfig {
     pub post_aggregations: Option<Value>,
     poller_type: Option<String>,
     interval: Option<u64>,
+
+    pub otel_attributes: Option<HashMap<String, String>>,
+    pub otel_dimension_to_attribute_map: Option<HashMap<String, String>>,
 }
 
 pub enum TSPollerType {
