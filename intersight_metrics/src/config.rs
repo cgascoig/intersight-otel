@@ -26,6 +26,8 @@ impl GlobalConfig {
     }
 }
 
+pub type OTelAttributes = HashMap<String, String>;
+
 #[derive(Debug, Deserialize, Clone)]
 #[allow(unused)]
 pub struct PollerConfig {
@@ -96,5 +98,21 @@ impl TSPollerConfig {
             Some(x) => x,
             _ => 10,
         }
+    }
+}
+
+pub trait OTelAttributeProvider {
+    fn otel_attributes(&self) -> OTelAttributes;
+}
+
+impl OTelAttributeProvider for PollerConfig {
+    fn otel_attributes(&self) -> OTelAttributes {
+        self.otel_attributes.clone().unwrap_or_default()
+    }
+}
+
+impl OTelAttributeProvider for TSPollerConfig {
+    fn otel_attributes(&self) -> OTelAttributes {
+        self.otel_attributes.clone().unwrap_or_default()
     }
 }
