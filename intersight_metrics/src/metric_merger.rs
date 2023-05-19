@@ -1,9 +1,12 @@
 use crate::intersight_poller::IntersightMetric;
-use opentelemetry::sdk::metrics::PushController;
-use opentelemetry::{global, metrics::ValueObserver, Value};
+use opentelemetry::metrics::ObservableGauge;
+use opentelemetry::runtime;
+use opentelemetry::sdk::export::metrics::aggregation::cumulative_temporality_selector;
+use opentelemetry::sdk::metrics::controllers::BasicController;
+use opentelemetry::{global, Value};
 use opentelemetry::{metrics, Key, KeyValue};
 use opentelemetry_otlp::{ExportConfig, WithExportConfig};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -21,7 +24,7 @@ pub fn start_metric_merger(
 
         let intersight_metrics: HashMap<String, Vec<IntersightMetric>> = HashMap::new();
         let intersight_metrics = Arc::new(Mutex::new(intersight_metrics));
-        let mut otel_observers = HashMap::<String, ValueObserver<f64>>::new();
+        let mut otel_observers = HashMap::<String, ObservableGauge<f64>>::new();
         let meter = global::meter("intersight");
 
         info!("Starting metric merger task");
@@ -37,43 +40,53 @@ pub fn start_metric_merger(
 
                     let intersight_metrics_ref = intersight_metrics.clone();
 
-                    otel_observers.insert(
-                        metric_name.clone(),
-                        meter
-                            .f64_value_observer(metric.name.clone(), move |r| {
-                                trace!("i64_value_observer called");
-                                let mut im = intersight_metrics_ref.lock().unwrap();
-                                let metrics = im.get(&metric_name);
-                                if let Some(metrics) = metrics {
-                                    for metric in metrics {
-                                        if let Value::F64(metric_value) = metric.value {
-                                            trace!("value observed");
+                    let guage = meter.f64_observable_gauge(&metric.name).init();
+                    otel_observers.insert(metric_name.clone(), guage.clone());
+                    meter
+                        .register_callback(move |cx| {
+                            trace!("i64_value_observer called");
+                            let mut im = intersight_metrics_ref.lock().unwrap();
+                            let metrics = im.get(&metric_name);
+                            if let Some(metrics) = metrics {
+                                for metric in metrics {
+                                    if let Value::F64(metric_value) = metric.value {
+                                        trace!("value observed");
 
-                                            let mut attrs: Vec<KeyValue> = vec![];
-                                            for (key, value) in metric.attributes.clone() {
-                                                attrs.push(KeyValue {
-                                                    key: Key::from(key),
-                                                    value: Value::from(value),
-                                                })
-                                            }
-
-                                            trace!(
-                                                "observing value {} with attributes {:?}",
-                                                metric_value,
-                                                attrs.as_slice()
-                                            );
-                                            r.observe(metric_value, attrs.as_slice());
-                                        } else {
-                                            trace!("value not f64");
+                                        let mut attrs: Vec<KeyValue> = vec![];
+                                        for (key, value) in metric.attributes.clone() {
+                                            attrs.push(KeyValue {
+                                                key: Key::from(key),
+                                                value: Value::from(value),
+                                            })
                                         }
+
+                                        trace!(
+                                            "observing value {} with attributes {:?}",
+                                            metric_value,
+                                            attrs.as_slice()
+                                        );
+
+                                        if metric.timestamp_offset != 0 {
+                                            let cx = cx.with_value(
+                                                SystemTime::now()
+                                                    .checked_sub(Duration::from_secs(900))
+                                                    .unwrap_or(SystemTime::now()),
+                                            );
+
+                                            guage.observe(&cx, metric_value, attrs.as_slice());
+                                        } else {
+                                            guage.observe(cx, metric_value, attrs.as_slice());
+                                        }
+                                    } else {
+                                        trace!("value not f64");
                                     }
-                                    im.remove(&metric_name);
-                                } else {
-                                    trace!("value not Some");
                                 }
-                            })
-                            .init(),
-                    );
+                                im.remove(&metric_name);
+                            } else {
+                                trace!("value not Some");
+                            }
+                        })
+                        .unwrap();
                 }
 
                 // update the intersight_metrics hashmap with the new value
@@ -88,13 +101,18 @@ pub fn start_metric_merger(
     })
 }
 
-fn init_metrics_otlp(otel_collector_endpoint: &str) -> metrics::Result<PushController> {
+fn init_metrics_otlp(otel_collector_endpoint: &str) -> metrics::Result<BasicController> {
     let export_config = ExportConfig {
         endpoint: otel_collector_endpoint.to_string(),
         ..ExportConfig::default()
     };
+
     opentelemetry_otlp::new_pipeline()
-        .metrics(tokio::spawn, opentelemetry::util::tokio_interval_stream)
+        .metrics(
+            opentelemetry::sdk::metrics::selectors::simple::inexpensive(),
+            cumulative_temporality_selector(),
+            runtime::Tokio,
+        )
         .with_period(Duration::from_secs(60))
         .with_exporter(
             opentelemetry_otlp::new_exporter()
@@ -103,20 +121,3 @@ fn init_metrics_otlp(otel_collector_endpoint: &str) -> metrics::Result<PushContr
         )
         .build()
 }
-
-// use futures_util::{Stream, StreamExt as _};
-// use std::time::Duration;
-// use opentelemetry::sdk::export;
-
-// // Skip first immediate tick from tokio, not needed for async_std.
-// fn delayed_interval(duration: Duration) -> impl Stream<Item = tokio::time::Instant> {
-//     opentelemetry::util::tokio_interval_stream(duration).skip(1)
-// }
-
-// fn init_metrics_stdout() -> metrics::Result<PushController> {
-//     let exporter = export::metrics::stdout(tokio::spawn, delayed_interval)
-//         .with_period(Duration::from_secs(5))
-//         .init();
-
-//     Ok(exporter)
-// }

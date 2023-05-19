@@ -16,6 +16,7 @@ pub struct IntersightMetric {
     pub name: String,
     pub attributes: BTreeMap<String, String>,
     pub value: Value,
+    pub timestamp_offset: u64,
 }
 
 impl IntersightMetric {
@@ -28,6 +29,7 @@ impl IntersightMetric {
             name: name.to_string(),
             attributes: attributes.unwrap_or_default(),
             value,
+            timestamp_offset: 0,
         }
     }
 }

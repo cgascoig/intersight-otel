@@ -55,8 +55,10 @@ pub async fn poll(client: &Client, config: &TSPollerConfig) -> Result<Vec<Inters
                             continue;
                         }
 
-                        let metric =
+                        let mut metric =
                             IntersightMetric::new(field_name, otel_value, Some(attributes.clone()));
+
+                        metric.timestamp_offset = 900;
 
                         ret.push(metric);
                     }
