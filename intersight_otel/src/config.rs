@@ -54,7 +54,7 @@ impl PollerConfig {
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    #[clap(short, long, value_parser, default_value_t = String::from("ismetrics"))]
+    #[clap(short, long, value_parser, default_value_t = String::from("intersight_otel"))]
     config_file: String,
 }
 

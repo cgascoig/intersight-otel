@@ -748,7 +748,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "intersight_metrics"
+name = "intersight_otel"
 version = "0.1.0"
 dependencies = [
  "anyhow",
