@@ -12,11 +12,11 @@ mod metric_merger;
 async fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    info!("starting up");
+    info!("intersight_otel starting up");
 
     let config = config::GlobalConfig::new().context("Unable to load config")?;
     info!(
-        "Using key_id {} and key_file {}",
+        "Using Intersight key_id {} and key_file {}",
         config.key_id, config.key_file
     );
 
