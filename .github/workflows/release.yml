@@ -47,12 +47,12 @@ jobs:
           - OS: ubuntu-latest
             TARGET: x86_64-unknown-linux-gnu
             TARGET_NAME: linux-x86_64
-          # - OS: windows-latest
-          #   TARGET: x86_64-pc-windows-msvc
-          #   TARGET_NAME: win-x86_64
-          # - OS: macos-latest
-          #   TARGET: x86_64-apple-darwin
-          #   TARGET_NAME: macos-x86_64
+          - OS: windows-latest
+            TARGET: x86_64-pc-windows-msvc
+            TARGET_NAME: win-x86_64
+          - OS: macos-latest
+            TARGET: x86_64-apple-darwin
+            TARGET_NAME: macos-x86_64
     env:
       OS: ${{matrix.OS}}
       TARGET: ${{matrix.TARGET}}
@@ -94,7 +94,9 @@ jobs:
       #     name: result
       #     path: |
       #       ./artifacts
-      - name: Release
-        uses: softprops/action-gh-release@v1
+      - name: Upload release binaries
+        uses: alexellis/upload-assets@0.4.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
-          files: ./artifacts/*.tar.gz
+          asset_paths: '["./artifacts/*.tar.gz"]'
