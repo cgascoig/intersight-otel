@@ -51,9 +51,9 @@ jobs:
           - OS: ubuntu-latest
             TARGET: x86_64-unknown-linux-gnu
             TARGET_NAME: linux-x86_64
-          - OS: windows-latest
-            TARGET: x86_64-pc-windows-msvc
-            TARGET_NAME: win-x86_64
+          # - OS: windows-latest
+          #   TARGET: x86_64-pc-windows-msvc
+          #   TARGET_NAME: win-x86_64
           - OS: macos-latest
             TARGET: x86_64-apple-darwin
             TARGET_NAME: macos-x86_64
@@ -64,9 +64,9 @@ jobs:
       NAME: intersight_otel
     runs-on: ${{matrix.OS}}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Cargo cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cargo/registry
@@ -94,7 +94,7 @@ jobs:
           mv ./target/$TARGET/release/$EXEC ./$EXEC
           tar -czf ./artifacts/$NAME-$TARGET_NAME-$TAG.tar.gz $EXEC
       - name: Archive artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: result
           path: |
@@ -104,7 +104,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: result
           path: ./artifacts
