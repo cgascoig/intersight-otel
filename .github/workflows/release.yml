@@ -16,7 +16,7 @@ jobs:
   build-and-push-image:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
@@ -93,12 +93,23 @@ jobs:
           fi
           mv ./target/$TARGET/release/$EXEC ./$EXEC
           tar -czf ./artifacts/$NAME-$TARGET_NAME-$TAG.tar.gz $EXEC
-      # - name: Archive artifact
-      #   uses: actions/upload-artifact@v2
-      #   with:
-      #     name: result
-      #     path: |
-      #       ./artifacts
+      - name: Archive artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: result
+          path: |
+            ./artifacts
+  release-binaries:
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: result
+          path: ./artifacts
+      - name: List
+        run: find ./artifacts
       - name: Upload release binaries
         uses: alexellis/upload-assets@0.4.0
         env:
