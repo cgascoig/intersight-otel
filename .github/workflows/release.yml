@@ -102,6 +102,9 @@ jobs:
   release-binaries:
     needs: build-binaries
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v3
