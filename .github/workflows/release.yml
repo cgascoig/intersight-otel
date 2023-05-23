@@ -39,3 +39,62 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  build-binaries:
+    strategy:
+      matrix:
+        include:
+          - OS: ubuntu-latest
+            TARGET: x86_64-unknown-linux-gnu
+            TARGET_NAME: linux-x86_64
+          # - OS: windows-latest
+          #   TARGET: x86_64-pc-windows-msvc
+          #   TARGET_NAME: win-x86_64
+          # - OS: macos-latest
+          #   TARGET: x86_64-apple-darwin
+          #   TARGET_NAME: macos-x86_64
+    env:
+      OS: ${{matrix.OS}}
+      TARGET: ${{matrix.TARGET}}
+      TARGET_NAME: ${{matrix.TARGET_NAME}}
+      NAME: intersight_otel
+    runs-on: ${{matrix.OS}}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Cargo cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ./target
+          key: build-cargo-registry-${{matrix.TARGET}}
+      - name: Install rust target
+        run: rustup target add $TARGET
+      - name: Run build
+        run: cargo build --release --target $TARGET
+      - name: Compress
+        run: |
+          mkdir -p ./artifacts
+          # windows is the only OS using a different convention for executable file name
+          if [[ $OS =~ ^windows.*$ ]]; then
+              EXEC=$NAME.exe
+          else
+              EXEC=$NAME
+          fi
+          if [[ $GITHUB_REF_TYPE =~ ^tag$ ]]; then
+            TAG=$GITHUB_REF_NAME
+          else
+            TAG=$GITHUB_SHA
+          fi
+          mv ./target/$TARGET/release/$EXEC ./$EXEC
+          tar -czf ./artifacts/$NAME-$TARGET_NAME-$TAG.tar.gz $EXEC
+      # - name: Archive artifact
+      #   uses: actions/upload-artifact@v2
+      #   with:
+      #     name: result
+      #     path: |
+      #       ./artifacts
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ./artifacts/*.tar.gz
