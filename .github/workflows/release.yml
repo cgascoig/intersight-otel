@@ -51,9 +51,9 @@ jobs:
           - OS: ubuntu-latest
             TARGET: x86_64-unknown-linux-gnu
             TARGET_NAME: linux-x86_64
-          # - OS: windows-latest
-          #   TARGET: x86_64-pc-windows-msvc
-          #   TARGET_NAME: win-x86_64
+          - OS: windows-latest
+            TARGET: x86_64-pc-windows-msvc
+            TARGET_NAME: win-x86_64
           - OS: macos-latest
             TARGET: x86_64-apple-darwin
             TARGET_NAME: macos-x86_64
