@@ -75,7 +75,14 @@ jobs:
       - name: Install rust target
         run: rustup target add $TARGET
       - name: Run build
-        run: cargo build --release --target $TARGET
+        run: |
+          if [[ $OS =~ ^windows.*$ ]]; then
+            export VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT
+            vcpkg install openssl:x64-windows-static-md
+            cargo build --release --target $TARGET
+          else
+            cargo build --release --target $TARGET
+          fi
         
       - name: Compress
         run: |
