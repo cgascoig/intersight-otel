@@ -128,6 +128,7 @@ jobs:
         env:
           AC_USERNAME: ${{ secrets.AC_USERNAME }}
           AC_PASSWORD: ${{ secrets.AC_PASSWORD }}
+          AC_TEAM: ${{ secrets.AC_TEAM }}
         run: |
           echo Before signing
           echo ./artifacts contents:
