@@ -139,9 +139,6 @@ jobs:
             TAG=$GITHUB_SHA
           fi
 
-          brew tap mitchellh/gon
-          brew install mitchellh/gon/gon
-
           mkdir -p ./macosbins/intersight_otel-macos-x86_64
           # mkdir -p ./macosbins/intersight_otel-macos-arm64
 
@@ -156,28 +153,11 @@ jobs:
           echo ./macosbins contents:
           find ./macosbins -type f | xargs shasum
 
-          # Setup gon.hcl
-          cat >gon.hcl <<HERE
-          # source = ["./macosbins/intersight_otel-macos-x86_64/intersight_otel", "./macosbins/intersight_otel-macos-arm64/intersight_otel"]
-          source = ["./macosbins/intersight_otel-macos-x86_64/intersight_otel"]
-          bundle_id = "com.github.cgascoig.intersight_otel"
+          codesign -s "Developer ID Application: C Gascoigne (JMQA292WQZ)" --deep -v -f -o runtime ./macosbins/intersight_otel-macos-x86_64/intersight_otel
+          (cd ./macosbins/intersight_otel-macos-x86_64; zip intersight_otel-macos-x86_64.zip intersight_otel )
+          xcrun notarytool submit --apple-id "$AC_USERNAME" --password "$AC_PASSWORD" --team-id "$AC_TEAM" --wait --progress ./macosbins/intersight_otel-macos-x86_64/intersight_otel.zip
 
-          apple_id {
-          # these are commented out as these environment vars are used by default
-          #    username = "@env:AC_USERNAME"
-          #    password = "@env:AC_PASSWORD"
-          }
-
-          sign {
-              application_identity = "Developer ID Application: C Gascoigne (JMQA292WQZ)"
-          }
-
-          zip {
-              output_path = "./macosbins/intersight_otel-macos-x86_64/intersight_otel-macos-x86_64.zip"
-          }
-          HERE
-
-          gon -log-level=debug -log-json ./gon.hcl
+          mv ./macosbins/intersight_otel-macos-x86_64/intersight_otel.zip ./artifacts/
 
           echo After signing
           echo ./artifacts contents:
@@ -185,7 +165,7 @@ jobs:
           echo ./macosbins contents:
           find ./macosbins -type f | xargs shasum
 
-          tar --directory ./macosbins/intersight_otel-macos-x86_64 -cvzf ./artifacts/intersight_otel-macos-x86_64-$TAG.tar.gz intersight_otel
+          # tar --directory ./macosbins/intersight_otel-macos-x86_64 -cvzf ./artifacts/intersight_otel-macos-x86_64-$TAG.tar.gz intersight_otel
           # (cd ./macosbins/intersight_otel-macos-x86_64; tar czf ../../artifacts/intersight_otel-macos-x86_64-$TAG.tar.gz intersight_otel)
           # (cd ./macosbins/intersight_otel-macos-arm64; tar czf ../../artifacts/intersight_otel-macos-arm64-$TAG.tar.gz intersight_otel)
       - name: Archive artifact
