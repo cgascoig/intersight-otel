@@ -101,7 +101,7 @@ jobs:
             TAG=$GITHUB_SHA
           fi
           # mv ./target/$TARGET/release/$EXEC ./$EXEC
-          tar --cd target/$TARGET/release -czf ./artifacts/$NAME-$TARGET_NAME-$TAG.tar.gz $EXEC
+          tar --directory target/$TARGET/release -czf ./artifacts/$NAME-$TARGET_NAME-$TAG.tar.gz $EXEC
       - name: Archive artifact
         uses: actions/upload-artifact@v3
         with:
@@ -145,7 +145,7 @@ jobs:
           mkdir -p ./macosbins/intersight_otel-macos-x86_64
           # mkdir -p ./macosbins/intersight_otel-macos-arm64
 
-          tar --cd ./macosbins/intersight_otel-macos-x86_64/ -xvzf ./artifacts/intersight_otel-macos-x86_64*.tar.gz 
+          tar --directory ./macosbins/intersight_otel-macos-x86_64/ -xvzf ./artifacts/intersight_otel-macos-x86_64*.tar.gz 
           # tar xvzf ./artifacts/intersight_otel-macos-arm64*.tar.gz ./macosbins/intersight_otel-macos-arm64/
 
           rm ./artifacts/intersight_otel-macos*.tar.gz
@@ -185,7 +185,7 @@ jobs:
           echo ./macosbins contents:
           find ./macosbins -type f | xargs shasum
 
-          tar --cd ./macosbins/intersight_otel-macos-x86_64 -cvzf ./artifacts/intersight_otel-macos-x86_64-$TAG.tar.gz intersight_otel
+          tar --directory ./macosbins/intersight_otel-macos-x86_64 -cvzf ./artifacts/intersight_otel-macos-x86_64-$TAG.tar.gz intersight_otel
           # (cd ./macosbins/intersight_otel-macos-x86_64; tar czf ../../artifacts/intersight_otel-macos-x86_64-$TAG.tar.gz intersight_otel)
           # (cd ./macosbins/intersight_otel-macos-arm64; tar czf ../../artifacts/intersight_otel-macos-arm64-$TAG.tar.gz intersight_otel)
       - name: Archive artifact
