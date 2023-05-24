@@ -57,9 +57,9 @@ jobs:
           - OS: macos-latest
             TARGET: x86_64-apple-darwin
             TARGET_NAME: macos-x86_64
-          - OS: macos-latest
-            TARGET: aarch64-apple-darwin
-            TARGET_NAME: macos-arm64
+          # - OS: macos-latest
+          #   TARGET: aarch64-apple-darwin
+          #   TARGET_NAME: macos-arm64
     env:
       OS: ${{matrix.OS}}
       TARGET: ${{matrix.TARGET}}
@@ -139,10 +139,10 @@ jobs:
           brew install mitchellh/gon/gon
 
           mkdir -p ./macosbins/intersight_otel-macos-x86_64
-          mkdir -p ./macosbins/intersight_otel-macos-arm64
+          # mkdir -p ./macosbins/intersight_otel-macos-arm64
 
           tar xvzf ./archive/intersight_otel-macos-x86_64*.tar.gz ./macosbins/intersight_otel-macos-x86_64/
-          tar xvzf ./archive/intersight_otel-macos-arm64*.tar.gz ./macosbins/intersight_otel-macos-arm64/
+          # tar xvzf ./archive/intersight_otel-macos-arm64*.tar.gz ./macosbins/intersight_otel-macos-arm64/
 
           rm ./archive/intersight_otel-macos*.tar.gz
 
@@ -154,7 +154,8 @@ jobs:
 
           # Setup gon.hcl
           cat >gon.hcl <<HERE
-          source = ["./macosbins/intersight_otel-macos-x86_64/intersight_otel", "./macosbins/intersight_otel-macos-arm64/intersight_otel"]
+          # source = ["./macosbins/intersight_otel-macos-x86_64/intersight_otel", "./macosbins/intersight_otel-macos-arm64/intersight_otel"]
+          source = ["./macosbins/intersight_otel-macos-x86_64/intersight_otel"]
           bundle_id = "com.github.cgascoig.intersight_otel"
 
           apple_id {
@@ -181,7 +182,7 @@ jobs:
           find ./macosbins -type f | xargs shasum
 
           (cd ./macosbins/intersight_otel-macos-x86_64; tar czf ../../artifacts/intersight_otel-macos-x86_64-$TAG.tar.gz intersight_otel)
-          (cd ./macosbins/intersight_otel-macos-arm64; tar czf ../../artifacts/intersight_otel-macos-arm64-$TAG.tar.gz intersight_otel)
+          # (cd ./macosbins/intersight_otel-macos-arm64; tar czf ../../artifacts/intersight_otel-macos-arm64-$TAG.tar.gz intersight_otel)
       - name: Archive artifact
         uses: actions/upload-artifact@v3
         with:
