@@ -129,6 +129,10 @@ jobs:
           AC_USERNAME: ${{ secrets.AC_USERNAME }}
           AC_PASSWORD: ${{ secrets.AC_PASSWORD }}
         run: |
+          echo Before signing
+          echo ./artifacts contents:
+          find ./artifacts -type f | xargs shasum
+
           if [[ $GITHUB_REF_TYPE =~ ^tag$ ]]; then
             TAG=$GITHUB_REF_NAME
           else
@@ -141,14 +145,14 @@ jobs:
           mkdir -p ./macosbins/intersight_otel-macos-x86_64
           # mkdir -p ./macosbins/intersight_otel-macos-arm64
 
-          tar xvzf ./archive/intersight_otel-macos-x86_64*.tar.gz ./macosbins/intersight_otel-macos-x86_64/
-          # tar xvzf ./archive/intersight_otel-macos-arm64*.tar.gz ./macosbins/intersight_otel-macos-arm64/
+          tar xvzf ./artifacts/intersight_otel-macos-x86_64*.tar.gz ./macosbins/intersight_otel-macos-x86_64/
+          # tar xvzf ./artifacts/intersight_otel-macos-arm64*.tar.gz ./macosbins/intersight_otel-macos-arm64/
 
-          rm ./archive/intersight_otel-macos*.tar.gz
+          rm ./artifacts/intersight_otel-macos*.tar.gz
 
           echo Before signing
-          echo ./archive contents:
-          find ./archive -type f | xargs shasum
+          echo ./artifacts contents:
+          find ./artifacts -type f | xargs shasum
           echo ./macosbins contents:
           find ./macosbins -type f | xargs shasum
 
@@ -176,8 +180,8 @@ jobs:
           gon -log-level=debug -log-json ./gon.hcl
 
           echo After signing
-          echo ./archive contents:
-          find ./archive -type f | xargs shasum
+          echo ./artifacts contents:
+          find ./artifacts -type f | xargs shasum
           echo ./macosbins contents:
           find ./macosbins -type f | xargs shasum
 
