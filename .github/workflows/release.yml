@@ -155,9 +155,9 @@ jobs:
 
           codesign -s "Developer ID Application: C Gascoigne (JMQA292WQZ)" --deep -v -f -o runtime ./macosbins/intersight_otel-macos-x86_64/intersight_otel
           (cd ./macosbins/intersight_otel-macos-x86_64; zip intersight_otel-macos-x86_64.zip intersight_otel )
-          xcrun notarytool submit --apple-id "$AC_USERNAME" --password "$AC_PASSWORD" --team-id "$AC_TEAM" --wait --progress ./macosbins/intersight_otel-macos-x86_64/intersight_otel.zip
+          xcrun notarytool submit --apple-id "$AC_USERNAME" --password "$AC_PASSWORD" --team-id "$AC_TEAM" --wait --progress ./macosbins/intersight_otel-macos-x86_64/intersight_otel-macos-x86_64.zip
 
-          mv ./macosbins/intersight_otel-macos-x86_64/intersight_otel.zip ./artifacts/
+          mv ./macosbins/intersight_otel-macos-x86_64/intersight_otel-macos-x86_64.zip ./artifacts/
 
           echo After signing
           echo ./artifacts contents:
