@@ -57,9 +57,9 @@ jobs:
           - OS: macos-latest
             TARGET: x86_64-apple-darwin
             TARGET_NAME: macos-x86_64
-          # - OS: macos-latest
-          #   TARGET: aarch64-apple-darwin
-          #   TARGET_NAME: macos-arm64
+          - OS: macos-latest
+            TARGET: aarch64-apple-darwin
+            TARGET_NAME: macos-arm64
     env:
       OS: ${{matrix.OS}}
       TARGET: ${{matrix.TARGET}}
@@ -194,4 +194,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          asset_paths: '["./artifacts/*.tar.gz"]'
+          asset_paths: '["./artifacts/*.tar.gz", "./artifacts/*.zip"]'
