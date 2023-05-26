@@ -1,7 +1,9 @@
+pub mod simplesigner;
+
+use std::sync::Arc;
+
+use crate::simplesigner::{Signer, SignerError};
 use http_signature_normalization_reqwest::prelude::*;
-use openssl::hash::MessageDigest;
-use openssl::pkey::{PKey, Private};
-use openssl::sign::Signer;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
@@ -10,7 +12,7 @@ extern crate log;
 
 #[derive(Clone)]
 pub struct Client {
-    private_key: PKey<Private>,
+    signer: Arc<Signer>,
     key_id: String,
     signing_config: Config,
     client: reqwest::Client,
@@ -23,13 +25,15 @@ impl Client {
         pem: &[u8],
         passphrase: Option<&[u8]>,
     ) -> Result<Self, IntersightError> {
-        let private_key;
-        if let Some(passphrase) = passphrase {
-            private_key = PKey::private_key_from_pem_passphrase(pem, passphrase)
-                .map_err(|_| IntersightError::KeyError)?;
+        let signer;
+        if let Some(_passphrase) = passphrase {
+            // Encrypted private key support is unimplemented
+            return Err(IntersightError::KeyError);
         } else {
-            private_key = PKey::private_key_from_pem(pem).map_err(|_| IntersightError::KeyError)?;
+            signer = Signer::from_pem(pem).map_err(|_| IntersightError::KeyError)?;
         }
+
+        let signer = Arc::new(signer);
 
         let signing_config = Config::default()
             .require_header("host")
@@ -43,7 +47,7 @@ impl Client {
 
         Ok(Client {
             key_id: key_id.to_string(),
-            private_key,
+            signer,
             signing_config,
             client,
             host: "intersight.com".to_string(),
@@ -68,8 +72,6 @@ impl Client {
 
     async fn call(&self, method: Method, path: &str) -> Result<Value, IntersightError> {
         let url = format!("https://{}/{}", self.host, path);
-
-        let mut signer = Signer::new(MessageDigest::sha256(), &self.private_key).unwrap();
 
         let mut body: Option<serde_json::Value> = None;
 
@@ -108,8 +110,11 @@ impl Client {
                     s
                 );
 
-                signer.update(s.as_bytes()).map_err(IntersightError::Sign)?;
-                let b64 = base64::encode(signer.sign_to_vec().unwrap());
+                let b64 = base64::encode(
+                    self.signer
+                        .sign_to_vec(s.as_bytes())
+                        .map_err(IntersightError::Sign)?,
+                );
                 trace!("Calculated signature: {}", b64);
                 Ok(b64) as Result<_, IntersightError>
             })?
@@ -153,7 +158,7 @@ pub enum IntersightError {
     Body(reqwest::Error),
 
     #[error("Failed to sign string")]
-    Sign(openssl::error::ErrorStack),
+    Sign(SignerError),
 
     #[error("Failed to parse response: {0}")]
     ResponseError(#[from] serde_json::Error),
