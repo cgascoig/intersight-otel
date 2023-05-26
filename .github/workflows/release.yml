@@ -100,7 +100,6 @@ jobs:
           else
             TAG=$GITHUB_SHA
           fi
-          # mv ./target/$TARGET/release/$EXEC ./$EXEC
           tar --directory target/$TARGET/release -czf ./artifacts/$NAME-$TARGET_NAME-$TAG.tar.gz $EXEC
       - name: Archive artifact
         uses: actions/upload-artifact@v3
@@ -141,10 +140,10 @@ jobs:
           fi
 
           mkdir -p ./macosbins/intersight_otel-macos-x86_64
-          # mkdir -p ./macosbins/intersight_otel-macos-arm64
+          mkdir -p ./macosbins/intersight_otel-macos-arm64
 
           tar --directory ./macosbins/intersight_otel-macos-x86_64/ -xvzf ./artifacts/intersight_otel-macos-x86_64*.tar.gz 
-          # tar xvzf ./artifacts/intersight_otel-macos-arm64*.tar.gz ./macosbins/intersight_otel-macos-arm64/
+          tar --directory ./macosbins/intersight_otel-macos-arm64/ -xvzf ./artifacts/intersight_otel-macos-arm64*.tar.gz 
 
           rm ./artifacts/intersight_otel-macos*.tar.gz
 
@@ -154,21 +153,23 @@ jobs:
           echo ./macosbins contents:
           find ./macosbins -type f | xargs shasum
 
+          # sign, zip, notarize and move into artifacts x86_64 binary
           codesign -s "Developer ID Application: C Gascoigne (JMQA292WQZ)" --deep -v -f -o runtime ./macosbins/intersight_otel-macos-x86_64/intersight_otel
-          (cd ./macosbins/intersight_otel-macos-x86_64; zip intersight_otel-macos-x86_64.zip intersight_otel )
-          xcrun notarytool submit --apple-id "$AC_USERNAME" --password "$AC_PASSWORD" --team-id "$AC_TEAM" --wait --progress ./macosbins/intersight_otel-macos-x86_64/intersight_otel-macos-x86_64.zip
+          (cd ./macosbins/intersight_otel-macos-x86_64; zip intersight_otel-macos-x86_64-$TAG.zip intersight_otel )
+          xcrun notarytool submit --apple-id "$AC_USERNAME" --password "$AC_PASSWORD" --team-id "$AC_TEAM" --wait --progress ./macosbins/intersight_otel-macos-x86_64/intersight_otel-macos-x86_64-$TAG.zip
+          mv ./macosbins/intersight_otel-macos-x86_64/intersight_otel-macos-x86_64-$TAG.zip ./artifacts/
 
-          mv ./macosbins/intersight_otel-macos-x86_64/intersight_otel-macos-x86_64.zip ./artifacts/
+          # sign, zip, notarize and move into artifacts arm64 binary
+          codesign -s "Developer ID Application: C Gascoigne (JMQA292WQZ)" --deep -v -f -o runtime ./macosbins/intersight_otel-macos-arm64/intersight_otel
+          (cd ./macosbins/intersight_otel-macos-arm64; zip intersight_otel-macos-arm64-$TAG.zip intersight_otel )
+          xcrun notarytool submit --apple-id "$AC_USERNAME" --password "$AC_PASSWORD" --team-id "$AC_TEAM" --wait --progress ./macosbins/intersight_otel-macos-arm64/intersight_otel-macos-arm64-$TAG.zip
+          mv ./macosbins/intersight_otel-macos-arm64/intersight_otel-macos-arm64-$TAG.zip ./artifacts/
 
           echo After signing
           echo ./artifacts contents:
           find ./artifacts -type f | xargs shasum
           echo ./macosbins contents:
           find ./macosbins -type f | xargs shasum
-
-          # tar --directory ./macosbins/intersight_otel-macos-x86_64 -cvzf ./artifacts/intersight_otel-macos-x86_64-$TAG.tar.gz intersight_otel
-          # (cd ./macosbins/intersight_otel-macos-x86_64; tar czf ../../artifacts/intersight_otel-macos-x86_64-$TAG.tar.gz intersight_otel)
-          # (cd ./macosbins/intersight_otel-macos-arm64; tar czf ../../artifacts/intersight_otel-macos-arm64-$TAG.tar.gz intersight_otel)
       - name: Archive artifact
         uses: actions/upload-artifact@v3
         with:
