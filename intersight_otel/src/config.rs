@@ -1,5 +1,5 @@
 use clap::Parser;
-use config::{Config, ConfigError, File};
+use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -20,6 +20,7 @@ impl GlobalConfig {
 
         let c = Config::builder()
             .add_source(File::with_name(&args.config_file))
+            .add_source(Environment::with_prefix("intersight_otel"))
             .build()?;
 
         c.try_deserialize()
