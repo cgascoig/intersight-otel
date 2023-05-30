@@ -1,7 +1,7 @@
 use ring::signature::{self, EcdsaKeyPair, RsaKeyPair};
 
 pub enum Signer {
-    Rsa(RsaKeyPair),
+    Rsa(Box<RsaKeyPair>),
     Ecdsa(EcdsaKeyPair),
 }
 
@@ -15,7 +15,7 @@ impl Signer {
                 SignerError::KeyError(String::from("error decoding RSA private key"))
             })?;
 
-            return Ok(Signer::Rsa(keypair));
+            return Ok(Signer::Rsa(Box::new(keypair)));
         } else if type_label == "EC PRIVATE KEY" {
             let keypair =
                 EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, &der)
@@ -26,14 +26,14 @@ impl Signer {
             return Ok(Signer::Ecdsa(keypair));
         }
 
-        Err(SignerError::KeyError(format!("unsupported key type")))
+        Err(SignerError::KeyError("unsupported key type".to_string()))
     }
 
     pub fn sign_to_vec(&self, data: &[u8]) -> Result<Vec<u8>, SignerError> {
         match self {
             Signer::Rsa(keypair) => {
                 let size = keypair.public_modulus_len();
-                let mut buf = vec![0 as u8; size];
+                let mut buf = vec![0; size];
                 keypair
                     .sign(
                         &ring::signature::RSA_PKCS1_SHA256,
@@ -47,7 +47,7 @@ impl Signer {
             Signer::Ecdsa(keypair) => {
                 let sig = keypair
                     .sign(&ring::rand::SystemRandom::new(), data)
-                    .map_err(|_| SignerError::KeyError(format!("error signing data")))?;
+                    .map_err(|_| SignerError::KeyError("error signing data".to_string()))?;
                 Ok(sig.as_ref().to_vec())
             }
         }
