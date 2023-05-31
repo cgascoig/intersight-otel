@@ -8,7 +8,7 @@ use std::collections::HashMap;
 #[allow(unused)]
 pub struct GlobalConfig {
     pub key_file: String,
-    pub key_id: String,
+    key_id: String,
     pub otel_collector_endpoint: String,
     pub pollers: Option<Vec<PollerConfig>>,
     pub tspollers: Option<Vec<TSPollerConfig>>,
@@ -24,6 +24,10 @@ impl GlobalConfig {
             .build()?;
 
         c.try_deserialize()
+    }
+
+    pub fn key_id(&self) -> &str {
+        return self.key_id.trim();
     }
 }
 

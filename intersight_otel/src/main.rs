@@ -17,11 +17,12 @@ async fn main() -> Result<()> {
     let config = config::GlobalConfig::new().context("Unable to load config")?;
     info!(
         "Using Intersight key_id {} and key_file {}",
-        config.key_id, config.key_file
+        config.key_id(),
+        config.key_file
     );
 
-    let key_bytes = fs::read(config.key_file)?;
-    let client = intersight_api::Client::from_key_bytes(&config.key_id, &key_bytes, None)?;
+    let key_bytes = fs::read(&config.key_file)?;
+    let client = intersight_api::Client::from_key_bytes(config.key_id(), &key_bytes, None)?;
 
     // Create a multi-producer single-consumer channel for poller tasks to send metrics to the metric_merger task
     let (metric_chan_tx, metric_chan_rx) = tokio::sync::mpsc::channel(32);
