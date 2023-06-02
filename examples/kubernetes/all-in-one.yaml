@@ -1,0 +1,1340 @@
+# this deployment will create a pod with both the intersight-otel collector and the opentelemetry-collector containers
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: intersight-otel
+spec:
+  selector:
+    matchLabels:
+      app: intersight-otel
+  template:
+    metadata:
+      labels:
+        app: intersight-otel
+        component: otel-collector
+      annotations:
+        eks.amazonaws.com/compute-type: fargate
+    spec:
+      tolerations:
+        - key: eks.amazonaws.com/compute-type
+          value: fargate
+          operator: Equal
+          effect: NoSchedule
+      containers:
+        - name: intersight-otel
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - all
+            privileged: false
+            readOnlyRootFilesystem: true
+          image: ghcr.io/cgascoig/intersight-otel:v0.0.3
+          # args: ["-c", "/etc/intersight-otel/intersight-otel.toml"]
+          command:
+            - "/target/release/intersight_otel"
+            - "-c"
+            - "/etc/intersight-otel/intersight-otel.toml"
+          env:
+            - name: RUST_LOG
+              value: "info"
+            - name: intersight_otel_key_file
+              value: /etc/intersight-otel-key/intersight.pem
+            - name: intersight_otel_key_id
+              valueFrom:
+                secretKeyRef:
+                  name: intersight-api-credentials
+                  key: intersight-key-id
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: intersight-otel-config
+              mountPath: /etc/intersight-otel
+              readOnly: true
+            - name: intersight-otel-key
+              mountPath: /etc/intersight-otel-key
+              readOnly: true
+        - command:
+            - "/awscollector" #"/otelcol"
+            - "--config=/conf/otel-collector-config.yaml"
+          image: amazon/aws-otel-collector:latest #otel/opentelemetry-collector:0.59.0
+          name: otel-collector
+          resources:
+            limits:
+              cpu: 1
+              memory: 2Gi
+            requests:
+              cpu: 200m
+              memory: 400Mi
+          ports:
+            - containerPort: 55679 # Default endpoint for ZPages.
+            - containerPort: 4317 # Default endpoint for OpenTelemetry receiver.
+            - containerPort: 14250 # Default endpoint for Jaeger gRPC receiver.
+            - containerPort: 14268 # Default endpoint for Jaeger HTTP receiver.
+            - containerPort: 9411 # Default endpoint for Zipkin receiver.
+            - containerPort: 8888 # Default endpoint for querying metrics.
+            - containerPort: 2112 # Prometheus exporter
+          volumeMounts:
+            - name: otel-collector-config-vol
+              mountPath: /conf
+      volumes:
+        - name: intersight-otel-config
+          configMap:
+            name: intersight-otel-config
+        - name: intersight-otel-key
+          secret:
+            secretName: intersight-api-credentials
+            items:
+              - key: intersight-key
+                path: intersight.pem
+        - configMap:
+            name: otel-collector-config
+            items:
+              - key: otel-collector-config
+                path: otel-collector-config.yaml
+          name: otel-collector-config-vol
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: intersight-otel-config
+data:
+  intersight-otel.toml: |
+    otel_collector_endpoint = "http://127.0.0.1:4317"
+
+    [[pollers]]
+    name = "intersight.vm.count"
+    api_query = "api/v1/virtualization/VirtualMachines?$count=true"
+    aggregator = "result_count"
+    interval = 300
+
+    [[pollers]]
+    name = "intersight.policy.ntp.count"
+    api_query = "api/v1/ntp/Policies?$count=true"
+    aggregator = "result_count"
+    interval = 300
+
+    [[pollers]]
+    name = "intersight.advisories.security.affected_objects"
+    api_query = "api/v1/tam/AdvisoryInstances?$count=true&$filter=Advisory/ObjectType eq 'tam.SecurityAdvisory'"
+    aggregator = "result_count"
+    interval = 300
+
+    [[pollers]]
+    name = "intersight.advisories.nonsecurity.affected_objects"
+    api_query = "api/v1/tam/AdvisoryInstances?$count=true&$filter=Advisory/ObjectType ne 'tam.SecurityAdvisory'"
+    aggregator = "result_count"
+    interval = 300
+
+    [[pollers]]
+    name = "intersight.advisories.security.count"
+    api_query = "api/v1/tam/AdvisoryInstances?$filter=Advisory/ObjectType eq 'tam.SecurityAdvisory'&$apply=groupby((Advisory), aggregate($count as count))"
+    aggregator = "count_results"
+    interval = 300
+
+    [[pollers]]
+    name = "intersight.alarms.count"
+    otel_attributes = { severity = "critical" }
+    api_query = "api/v1/cond/Alarms?$filter=Acknowledge eq 'None' and Severity eq 'Critical'&$count=true"
+    aggregator = "result_count"
+    interval = 300
+
+    [[pollers]]
+    name = "intersight.alarms.count"
+    otel_attributes = { severity = "warning" }
+    api_query = "api/v1/cond/Alarms?$filter=Acknowledge eq 'None' and Severity eq 'Warning'&$count=true"
+    aggregator = "result_count"
+    interval = 300
+
+    [[tspollers]]
+    name = "hx_performance"
+    datasource = "hx"
+    dimensions = ["deviceId"]
+    filter = { type = "and", fields = [{type = "selector", dimension = "node", value = "allhosts"},{type = "selector", dimension = "datastore", value = "cluster"}]}
+    aggregations = [{name = "read_ops_per_min", type = "longSum", fieldName = "sumReadOps"}, {name = "write_ops_per_min", type = "longSum",fieldName = "sumWriteOps"}, {name = "read_tp_bytes_per_min", type = "longSum", fieldName = "sumReadBytes"},{name = "write_tp_bytes_per_min", type = "longSum", fieldName = "sumWriteBytes"},{name = "sum_read_latency",type = "longSum", fieldName = "sumReadLatency"},{name = "sum_write_latency",type = "longSum", fieldName = "sumWriteLatency"}]
+    post_aggregations = [{type = "arithmetic",name = "intersight.hyperflex.read.iops",fn = "/",fields = [{type = "fieldAccess",name = "read_ops_per_min",fieldName = "read_ops_per_min"},{type = "constant",name = "const",value = 300}]}, {type = "arithmetic",name = "intersight.hyperflex.write.iops",fn = "/",fields = [{type = "fieldAccess",name = "write_ops_per_min",fieldName = "write_ops_per_min"},{type = "constant",name = "const",value = 300}]},{type = "arithmetic", name = "intersight.hyperflex.read.throughput", fn = "/", fields = [{type = "fieldAccess", name = "read_tp_bytes_per_min", fieldName = "read_tp_bytes_per_min"},{type = "constant", name = "const", value = 300}]},{type = "arithmetic", name = "intersight.hyperflex.write.throughput", fn = "/", fields = [{type = "fieldAccess", name = "write_tp_bytes_per_min", fieldName = "write_tp_bytes_per_min"},{type = "constant", name = "const", value = 300}]},{type = "arithmetic", name = "intersight.hyperflex.read.latency", fn = "/", fields = [{type = "fieldAccess", name = "sum_read_latency", fieldName = "sum_read_latency"},{type = "fieldAccess",name = "read_ops_per_min", fieldName = "read_ops_per_min"}]},{type = "arithmetic", name = "intersight.hyperflex.write.latency", fn = "/", fields = [{type = "fieldAccess", name = "sum_write_latency",fieldName = "sum_write_latency"},{type = "fieldAccess", name = "write_ops_per_min", fieldName = "write_ops_per_min"}]}]
+    field_names = ["intersight.hyperflex.read.iops", "intersight.hyperflex.write.iops", "intersight.hyperflex.read.throughput", "intersight.hyperflex.write.throughput", "intersight.hyperflex.read.latency", "intersight.hyperflex.write.latency"]
+    otel_dimension_to_attribute_map = { deviceId = "intersight.hyperflex.device.id" }
+    interval = 300
+    # poller_type = "sum"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  labels:
+    app: opentelemetry
+    component: otel-collector
+spec:
+  ports:
+    - name: otlp-grpc # Default endpoint for OpenTelemetry gRPC receiver.
+      port: 4317
+      protocol: TCP
+      targetPort: 4317
+    - name: otlp-http # Default endpoint for OpenTelemetry HTTP receiver.
+      port: 4318
+      protocol: TCP
+      targetPort: 4318
+    - name: metrics # Default endpoint for querying metrics.
+      port: 8888
+    - name: prometheus-exporter
+      port: 2112
+  selector:
+    component: otel-collector
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  labels:
+    app: opentelemetry
+    component: otel-collector-config
+data:
+  otel-collector-config: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+          http:
+    processors:
+      batch:
+      memory_limiter:
+        # 80% of maximum memory up to 2G
+        limit_mib: 1500
+        # 25% of limit up to 2G
+        spike_limit_mib: 512
+        check_interval: 5s
+    extensions:
+      zpages: {}
+      memory_ballast:
+        # Memory Ballast size should be max 1/3 to 1/2 of memory.
+        size_mib: 683
+    exporters:
+      prometheus:
+        endpoint: ":2112"
+        # const_labels:
+        #   testlabel: "123"
+        send_timestamps: true
+        metric_expiration: 180m
+        enable_open_metrics: true
+        resource_to_telemetry_conversion:
+          enabled: true
+      logging:
+        loglevel: debug
+      # awsemf:
+      #   region: 'ap-southeast-2'
+      #   resource_to_telemetry_conversion:
+      #     enabled: true
+      #   log_group_name: /metrics/otel
+      #   log_stream_name: otel_stream
+      #   namespace: intersight
+    service:
+      extensions: [zpages, memory_ballast]
+      pipelines:
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [logging, prometheus]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval:     60s # By default, scrape targets every 15 seconds.
+
+    # A scrape configuration containing exactly one endpoint to scrape:
+    # Here it's Prometheus itself.
+    scrape_configs:
+      # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+      - job_name: 'otel-collector'
+
+        static_configs:
+          - targets: ['otel-collector:2112']
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: prometheus
+  labels:
+    name: prometheus
+spec:
+  serviceName: prometheus
+  replicas: 1
+  selector:
+    matchLabels:
+      name: prometheus
+  template:
+    metadata:
+      labels:
+        name: prometheus
+    spec:
+      containers:
+        - name: main
+          image: prom/prometheus
+          args:
+            [
+              "--log.level=debug",
+              "--config.file=/etc/prometheus/prometheus.yml",
+            ]
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus/
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  labels:
+    name: prometheus
+spec:
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
+  selector:
+    name: prometheus
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: grafana
+  name: grafana
+spec:
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      securityContext:
+        fsGroup: 472
+        supplementalGroups:
+          - 0
+      containers:
+        - name: grafana
+          image: grafana/grafana:8.4.4
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+              name: http-grafana
+              protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /robots.txt
+              port: 3000
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            successThreshold: 1
+            timeoutSeconds: 2
+          livenessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: 3000
+            timeoutSeconds: 1
+          resources:
+            requests:
+              cpu: 250m
+              memory: 750Mi
+          volumeMounts:
+            - name: grafana-datasources
+              mountPath: /etc/grafana/provisioning/datasources
+              readOnly: true
+            - name: grafana-dashboards-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+              readOnly: true
+            - name: grafana-dashboards
+              mountPath: /var/lib/grafana/dashboards
+              readOnly: true
+      volumes:
+        - name: grafana-datasources
+          configMap:
+            name: grafana-datasources
+        - name: grafana-dashboards-provider
+          configMap:
+            name: grafana-dashboards-provider
+        - name: grafana-dashboards
+          configMap:
+            name: grafana-dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+data:
+  prometheus.yml: |
+    # Configuration file version
+    apiVersion: 1
+
+    # List of data sources to insert/update depending on what's
+    # available in the database.
+    datasources:
+      # <string, required> Sets the name you use to refer to
+      # the data source in panels and queries.
+      - name: Prometheus
+        # <string, required> Sets the data source type.
+        type: prometheus
+        # <string, required> Sets the access mode, either
+        # proxy or direct (Server or Browser in the UI).
+        # Some data sources are incompatible with any setting
+        # but proxy (Server).
+        access: proxy
+        # <int> Sets the organization id. Defaults to orgId 1.
+        orgId: 1
+        # <string> Sets a custom UID to reference this
+        # data source in other parts of the configuration.
+        # If not specified, Grafana generates one.
+        uid: prometheus
+        # <string> Sets the data source's URL, including the
+        # port.
+        url: http://prometheus:9090
+        # <string> Sets the database user, if necessary.
+        # user:
+        # <string> Sets the database name, if necessary.
+        # database:
+        version: 1
+        # <bool> Allows users to edit data sources from the
+        # Grafana UI.
+        editable: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-provider
+data:
+  intersight.yml: |
+    apiVersion: 1
+
+    providers:
+      # <string> an unique provider name. Required
+      - name: 'intersight-dashboards'
+        # <int> Org id. Default to 1
+        orgId: 1
+        # <string> name of the dashboard folder.
+        # folder: ''
+        # <string> folder UID. will be automatically generated if not specified
+        # folderUid: ''
+        # <string> provider type. Default to 'file'
+        type: file
+        # <bool> disable dashboard deletion
+        disableDeletion: false
+        # <int> how often Grafana will scan for changed dashboards
+        updateIntervalSeconds: 10
+        # <bool> allow updating provisioned dashboards from the UI
+        allowUiUpdates: false
+        options:
+          # <string, required> path to dashboard files on disk. Required when using the 'file' type
+          path: /var/lib/grafana/dashboards
+          # <bool> use folder names from filesystem to create folders in Grafana
+          foldersFromFilesStructure: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+data:
+  intersight.json: |
+    {
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": "-- Grafana --",
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "target": {
+              "limit": 100,
+              "matchAny": false,
+              "tags": [],
+              "type": "dashboard"
+            },
+            "type": "dashboard"
+          }
+        ]
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "id": 2,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "id": 22,
+          "panels": [],
+          "title": "Overview",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "datasource",
+            "uid": "grafana"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 0,
+            "y": 1
+          },
+          "id": 12,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "8.4.4",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": false,
+              "expr": "intersight_advisories_security_count{}",
+              "interval": "",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ],
+          "title": "Security Advisories",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "datasource",
+            "uid": "grafana"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 3,
+            "y": 1
+          },
+          "id": 14,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "8.4.4",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": false,
+              "expr": "intersight_advisories_security_affected_objects{}",
+              "interval": "",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ],
+          "title": "Objects with Security Advisories",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "datasource",
+            "uid": "grafana"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 6,
+            "y": 1
+          },
+          "id": 16,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "8.4.4",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": false,
+              "expr": "intersight_advisories_nonsecurity_affected_objects{}",
+              "interval": "",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ],
+          "title": "Objects with other advisories",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "datasource",
+            "uid": "grafana"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 9,
+            "y": 1
+          },
+          "id": 9,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "8.4.4",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": false,
+              "expr": "intersight_policy_ntp_count{}",
+              "interval": "",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ],
+          "title": "NTP Policy Count",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "datasource",
+            "uid": "grafana"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 12,
+            "y": 1
+          },
+          "id": 6,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "8.4.4",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": false,
+              "expr": "intersight_vm_count{}",
+              "interval": "",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ],
+          "title": "Virtual Machine Count",
+          "type": "stat"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 6
+          },
+          "id": 20,
+          "panels": [],
+          "title": "Alarms",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "datasource",
+            "uid": "grafana"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "min": 0,
+              "thresholds": {
+                "mode": "percentage",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 0,
+            "y": 7
+          },
+          "id": 10,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "8.4.4",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": false,
+              "expr": "sum(intersight_alarms_count)",
+              "hide": false,
+              "interval": "",
+              "legendFormat": "Intersight Total Alarms",
+              "refId": "A"
+            }
+          ],
+          "title": "Intersight Total Alarms",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "datasource",
+            "uid": "grafana"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "dark-red",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 3,
+            "y": 7
+          },
+          "id": 4,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "8.4.4",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": false,
+              "expr": "intersight_alarms_count{severity=\"critical\"}",
+              "interval": "",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ],
+          "title": "Intersight Critical Alarms",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "datasource",
+            "uid": "grafana"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "orange",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 6,
+            "y": 7
+          },
+          "id": 27,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "8.4.4",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": false,
+              "expr": "intersight_alarms_count{severity=\"warning\"}",
+              "interval": "",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ],
+          "title": "Intersight Warning Alarms",
+          "type": "stat"
+        },
+        {
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 12
+          },
+          "id": 24,
+          "title": "HyperFlex",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "datasource",
+            "uid": "grafana"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 15,
+            "x": 0,
+            "y": 13
+          },
+          "id": 2,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": false,
+              "expr": "intersight_hyperflex_read_iops{}",
+              "interval": "",
+              "legendFormat": "",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": false,
+              "expr": "intersight_hyperflex_write_iops{}",
+              "hide": false,
+              "interval": "",
+              "legendFormat": "",
+              "refId": "B"
+            }
+          ],
+          "title": "Hyperflex IOPS",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "datasource",
+            "uid": "grafana"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 15,
+            "x": 0,
+            "y": 19
+          },
+          "id": 18,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": false,
+              "expr": "intersight_hyperflex_read_throughput{}",
+              "interval": "",
+              "legendFormat": "",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": false,
+              "expr": "intersight_hyperflex_write_throughput{}",
+              "hide": false,
+              "interval": "",
+              "legendFormat": "",
+              "refId": "B"
+            }
+          ],
+          "title": "HyperFlex Throughput",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "datasource",
+            "uid": "grafana"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 15,
+            "x": 0,
+            "y": 25
+          },
+          "id": 26,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": false,
+              "expr": "intersight_hyperflex_read_latency{i}",
+              "interval": "",
+              "legendFormat": "",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": false,
+              "expr": "intersight_hyperflex_write_latency{}",
+              "hide": false,
+              "interval": "",
+              "legendFormat": "",
+              "refId": "B"
+            }
+          ],
+          "title": "HyperFlex Latency",
+          "type": "timeseries"
+        }
+      ],
+      "refresh": "5m",
+      "schemaVersion": 35,
+      "style": "dark",
+      "tags": [],
+      "templating": {
+        "list": []
+      },
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "",
+      "title": "Example Intersight Dashboard",
+      "uid": "zGUlvB8Vk2",
+      "version": 1,
+      "weekStart": ""
+    }
