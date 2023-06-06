@@ -12,8 +12,8 @@ pub async fn poll(client: &Client, config: &TSPollerConfig) -> Result<Vec<Inters
     let body = json!(
         {
             "queryType": "groupBy",
-            "dataSource": "hx",
-            "dimensions": ["deviceId"],
+            "dataSource": config.datasource,
+            "dimensions": config.dimensions,
             "filter": config.filter,
             "granularity": {"type":"period","period":"PT5M","timeZone":"America/Los_Angeles"},
             "intervals": [ get_interval() ],
