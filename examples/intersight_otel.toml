@@ -1,0 +1,56 @@
+otel_collector_endpoint = "http://127.0.0.1:4317"
+
+[[pollers]]
+name = "intersight.vm.count"
+api_query = "api/v1/virtualization/VirtualMachines?$count=true"
+aggregator = "result_count"
+interval = 300
+
+[[pollers]]
+name = "intersight.policy.ntp.count"
+api_query = "api/v1/ntp/Policies?$count=true"
+aggregator = "result_count"
+interval = 300
+
+[[pollers]]
+name = "intersight.advisories.security.affected_objects"
+api_query = "api/v1/tam/AdvisoryInstances?$count=true&$filter=Advisory/ObjectType eq 'tam.SecurityAdvisory'"
+aggregator = "result_count"
+interval = 300
+
+[[pollers]]
+name = "intersight.advisories.nonsecurity.affected_objects"
+api_query = "api/v1/tam/AdvisoryInstances?$count=true&$filter=Advisory/ObjectType ne 'tam.SecurityAdvisory'"
+aggregator = "result_count"
+interval = 300
+
+[[pollers]]
+name = "intersight.advisories.security.count"
+api_query = "api/v1/tam/AdvisoryInstances?$filter=Advisory/ObjectType eq 'tam.SecurityAdvisory'&$apply=groupby((Advisory), aggregate($count as count))"
+aggregator = "count_results"
+interval = 300
+
+[[pollers]]
+name = "intersight.alarms.count"
+otel_attributes = { severity = "critical" }
+api_query = "api/v1/cond/Alarms?$filter=Acknowledge eq 'None' and Severity eq 'Critical'&$count=true"
+aggregator = "result_count"
+interval = 300
+
+[[pollers]]
+name = "intersight.alarms.count"
+otel_attributes = { severity = "warning" }
+api_query = "api/v1/cond/Alarms?$filter=Acknowledge eq 'None' and Severity eq 'Warning'&$count=true"
+aggregator = "result_count"
+interval = 300
+
+[[tspollers]]
+name = "hx_performance"
+datasource = "hx"
+dimensions = ["deviceId"]
+filter = { type = "and", fields = [{type = "selector", dimension = "node", value = "allhosts"},{type = "selector", dimension = "datastore", value = "cluster"}]}
+aggregations = [{name = "read_ops_per_min", type = "longSum", fieldName = "sumReadOps"}, {name = "write_ops_per_min", type = "longSum",fieldName = "sumWriteOps"}, {name = "read_tp_bytes_per_min", type = "longSum", fieldName = "sumReadBytes"},{name = "write_tp_bytes_per_min", type = "longSum", fieldName = "sumWriteBytes"},{name = "sum_read_latency",type = "longSum", fieldName = "sumReadLatency"},{name = "sum_write_latency",type = "longSum", fieldName = "sumWriteLatency"}]
+post_aggregations = [{type = "arithmetic",name = "intersight.hyperflex.read.iops",fn = "/",fields = [{type = "fieldAccess",name = "read_ops_per_min",fieldName = "read_ops_per_min"},{type = "constant",name = "const",value = 300}]}, {type = "arithmetic",name = "intersight.hyperflex.write.iops",fn = "/",fields = [{type = "fieldAccess",name = "write_ops_per_min",fieldName = "write_ops_per_min"},{type = "constant",name = "const",value = 300}]},{type = "arithmetic", name = "intersight.hyperflex.read.throughput", fn = "/", fields = [{type = "fieldAccess", name = "read_tp_bytes_per_min", fieldName = "read_tp_bytes_per_min"},{type = "constant", name = "const", value = 300}]},{type = "arithmetic", name = "intersight.hyperflex.write.throughput", fn = "/", fields = [{type = "fieldAccess", name = "write_tp_bytes_per_min", fieldName = "write_tp_bytes_per_min"},{type = "constant", name = "const", value = 300}]},{type = "arithmetic", name = "intersight.hyperflex.read.latency", fn = "/", fields = [{type = "fieldAccess", name = "sum_read_latency", fieldName = "sum_read_latency"},{type = "fieldAccess",name = "read_ops_per_min", fieldName = "read_ops_per_min"}]},{type = "arithmetic", name = "intersight.hyperflex.write.latency", fn = "/", fields = [{type = "fieldAccess", name = "sum_write_latency",fieldName = "sum_write_latency"},{type = "fieldAccess", name = "write_ops_per_min", fieldName = "write_ops_per_min"}]}]
+field_names = ["intersight.hyperflex.read.iops", "intersight.hyperflex.write.iops", "intersight.hyperflex.read.throughput", "intersight.hyperflex.write.throughput", "intersight.hyperflex.read.latency", "intersight.hyperflex.write.latency"]
+otel_dimension_to_attribute_map = { deviceId = "intersight.hyperflex.device.id" }
+interval = 300
