@@ -1,6 +1,8 @@
-use super::IntersightMetric;
+use super::{IntersightMetric, IntersightMetricBatch, IntersightResourceMetrics};
 use intersight_api::{Client, IntersightError};
 use serde_json::Value;
+use tokio::runtime::Handle;
+use tokio::task;
 
 pub async fn poll(
     client: &Client,
@@ -8,7 +10,7 @@ pub async fn poll(
     method: &Option<String>,
     body: &Option<String>,
     agg: &(dyn Aggregator + Sync + Send),
-) -> Result<Vec<IntersightMetric>, PollerError> {
+) -> Result<IntersightMetricBatch, PollerError> {
     let method = (*method).clone().unwrap_or_default();
     let method = method.as_str();
 
@@ -34,6 +36,18 @@ pub async fn poll(
     Ok(ret)
 }
 
+pub fn poll_sync(
+    client: &Client,
+    query: &str,
+    method: &Option<String>,
+    body: &Option<String>,
+    agg: &(dyn Aggregator + Sync + Send),
+) -> Result<IntersightMetricBatch, PollerError> {
+    task::block_in_place(move || {
+        Handle::current().block_on(async move { poll(client, query, method, body, agg).await })
+    })
+}
+
 #[derive(thiserror::Error, Debug)]
 pub enum PollerError {
     #[error("error calling Intersight API")]
@@ -44,7 +58,7 @@ pub enum PollerError {
 }
 
 pub trait Aggregator {
-    fn aggregate(&self, r: Value) -> Vec<IntersightMetric>;
+    fn aggregate(&self, r: Value) -> IntersightMetricBatch;
 }
 
 //ResultCountingAggregator will explicitly count the number of results returned
@@ -59,17 +73,20 @@ impl ResultCountingAggregator {
 }
 
 impl Aggregator for ResultCountingAggregator {
-    fn aggregate(&self, r: Value) -> Vec<IntersightMetric> {
+    fn aggregate(&self, r: Value) -> IntersightMetricBatch {
+        let mut ret = IntersightResourceMetrics::default();
+
         let count: i64;
         if let serde_json::Value::Array(results) = &r["Results"] {
             count = results.len() as i64;
         } else {
-            return Vec::new();
+            return vec![];
         }
 
-        let m = IntersightMetric::new(&self.name, opentelemetry::Value::F64(count as f64), None);
+        ret.metrics
+            .push(IntersightMetric::new(&self.name, count as f64, None));
 
-        vec![m]
+        vec![ret]
     }
 }
 
@@ -85,22 +102,25 @@ impl ResultCountAggregator {
 }
 
 impl Aggregator for ResultCountAggregator {
-    fn aggregate(&self, r: Value) -> Vec<IntersightMetric> {
+    fn aggregate(&self, r: Value) -> IntersightMetricBatch {
+        let mut ret = IntersightResourceMetrics::default();
+
         let count: i64;
         if let serde_json::Value::Number(c) = &r["Count"] {
             if let Some(c) = c.as_i64() {
                 count = c;
             } else {
                 warn!("Unexpected type for result count");
-                return Vec::new();
+                return vec![];
             }
         } else {
             warn!("'Count' field not present in API response. Did you mean to include '$count=true' in the API query?");
-            return Vec::new();
+            return vec![];
         }
 
-        let m = IntersightMetric::new(&self.name, opentelemetry::Value::F64(count as f64), None);
+        ret.metrics
+            .push(IntersightMetric::new(&self.name, count as f64, None));
 
-        vec![m]
+        vec![ret]
     }
 }

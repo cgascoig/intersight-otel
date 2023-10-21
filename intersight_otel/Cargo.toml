@@ -19,7 +19,12 @@ clap = { version = "3.2.20", features = ["derive"] }
 chrono = "0.4.22"
 
 #Add opentelemetry
-opentelemetry = { version = "0.19.0", features = ["rt-tokio", "metrics"] }
-opentelemetry-otlp = { version = "0.12.0", features = ["tonic", "metrics"] }
-opentelemetry-semantic-conventions = { version = "0.11.0"}
-futures-util = { version = "0.3", default-features = false, features = ["std"] }
+# opentelemetry_api = { version = "0.20.0", features = ["metrics"] }
+# opentelemetry_sdk = { version = "0.20.0", features = ["rt-tokio"]}
+# opentelemetry-otlp = { version = "0.13.0", features = ["tonic", "metrics"] }
+# opentelemetry-semantic-conventions = { version = "0.12.0"}
+# futures-util = { version = "0.3", default-features = false, features = ["std"] }
+
+opentelemetry_api = { version = "0.20.0", features = ["metrics"] }
+opentelemetry-proto = { version = "0.3.0", features = ["gen-tonic", "metrics"]}
+tonic = "0.9.0"
