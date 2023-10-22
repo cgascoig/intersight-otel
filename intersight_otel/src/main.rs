@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use tokio::time::{sleep, Duration};
 
 use std::fs;
 
@@ -56,8 +55,6 @@ async fn main() -> Result<()> {
 
     // Keep running until the metric_merger finishes (i.e. never)
     merge_handle.await?;
-
-    // sleep(Duration::from_secs(10)).await;
 
     Ok(())
 }

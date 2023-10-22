@@ -4,7 +4,6 @@ use std::time::SystemTime;
 use anyhow::{bail, Result};
 use generic_poller::Aggregator;
 use intersight_api::Client;
-// use opentelemetry_api::{global, metrics::Meter, KeyValue, Value};
 use opentelemetry_proto::tonic::common::v1::{any_value, AnyValue, KeyValue};
 use tokio::{sync::mpsc::Sender, task::JoinHandle, time};
 
@@ -85,7 +84,7 @@ pub fn start_intersight_poller(
                 add_otel_attributes(&mut r, &config);
                 add_start_time(&mut r, start_time);
                 if let Err(err) = tx.send(r).await {
-                    error!("metrics receiver thread dropped");
+                    error!("metrics receiver thread dropped: {}", err);
                 }
             } else if let Err(err) = poll_result {
                 error!("error while polling Intersight: {}", err);
@@ -146,61 +145,3 @@ fn add_start_time(batch: &mut IntersightMetricBatch, start_time: SystemTime) {
         metrics.start_time = Some(start_time);
     }
 }
-
-// const METER_NAME: &str = "intersight-otel";
-
-// static mut meter_store: Vec<Meter> = vec![];
-
-// pub fn start_new_intersight_poller(client: &Client, config: &PollerConfig) -> Result<Meter> {
-//     let name = config.name.clone();
-
-//     info!("Starting new intersight poller {}", name);
-//     let meter = global::meter_with_version(
-//         METER_NAME,
-//         Some(""),
-//         Some(""),
-//         Some(vec![KeyValue::new("key", "value")]),
-//     );
-
-//     let client = (*client).clone();
-//     let config = (*config).clone();
-//     let query = config.api_query.clone();
-//     let method = config.api_method.clone();
-//     let body = config.api_body.clone();
-
-//     let aggregator = get_aggregator_for_config(&config)?;
-
-//     let guage = meter.f64_observable_gauge(name.clone()).init();
-
-//     meter.register_callback(&[guage.as_any()], move |obs| {
-//         debug!("Got observation callback for {}", name);
-
-//         let poll_result =
-//             generic_poller::poll_sync(&client, &query, &method, &body, aggregator.as_ref());
-
-//         if let Ok(mut r) = poll_result {
-//             let mut attrs: Vec<KeyValue> = vec![];
-//             for (k, v) in config.otel_attributes() {
-//                 attrs.push(KeyValue::new(k, v));
-//             }
-
-//             for metric in r {
-//                 if let Value::F64(metric_value) = metric.value {
-//                     info!(
-//                         "Observing metric {} with value {} and attributes {:?}",
-//                         name,
-//                         metric_value,
-//                         attrs.as_slice()
-//                     );
-//                     obs.observe_f64(&guage, metric_value, &attrs);
-//                 }
-//             }
-//         }
-
-//         // obs.observe_f64(&guage, 1.0, &[])
-//     })?;
-
-//     // meter_store.push(meter);
-
-//     Ok(meter)
-// }

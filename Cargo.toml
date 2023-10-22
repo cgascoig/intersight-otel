@@ -3,8 +3,3 @@ members = [
     "intersight_api",
     "intersight_otel",
 ]
-
-[patch.crates-io]
-opentelemetry = { git = "https://github.com/cgascoig/opentelemetry-rust", branch = "metrics_custom_timestamps" }
-opentelemetry-otlp = { git = "https://github.com/cgascoig/opentelemetry-rust", branch = "metrics_custom_timestamps" }
-opentelemetry-semantic-conventions = { git = "https://github.com/cgascoig/opentelemetry-rust", branch = "metrics_custom_timestamps" }

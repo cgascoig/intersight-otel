@@ -1,8 +1,6 @@
 use super::{IntersightMetric, IntersightMetricBatch, IntersightResourceMetrics};
 use intersight_api::{Client, IntersightError};
 use serde_json::Value;
-use tokio::runtime::Handle;
-use tokio::task;
 
 pub async fn poll(
     client: &Client,
@@ -34,18 +32,6 @@ pub async fn poll(
     let ret = agg.aggregate(response);
 
     Ok(ret)
-}
-
-pub fn poll_sync(
-    client: &Client,
-    query: &str,
-    method: &Option<String>,
-    body: &Option<String>,
-    agg: &(dyn Aggregator + Sync + Send),
-) -> Result<IntersightMetricBatch, PollerError> {
-    task::block_in_place(move || {
-        Handle::current().block_on(async move { poll(client, query, method, body, agg).await })
-    })
 }
 
 #[derive(thiserror::Error, Debug)]

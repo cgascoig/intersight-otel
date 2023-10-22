@@ -6,7 +6,7 @@ use super::{IntersightMetric, IntersightMetricBatch};
 use anyhow::Result;
 use chrono::{prelude::*, Duration};
 use intersight_api::Client;
-use opentelemetry_proto::tonic::common::v1::{any_value, AnyValue, KeyValue, KeyValueList};
+use opentelemetry_proto::tonic::common::v1::{any_value, AnyValue, KeyValue};
 use serde_json::{json, Value};
 
 pub async fn poll(client: &Client, config: &TSPollerConfig) -> Result<IntersightMetricBatch> {
@@ -36,7 +36,7 @@ pub async fn poll(client: &Client, config: &TSPollerConfig) -> Result<Intersight
 
             if let Value::Object(event) = &result["event"] {
                 // Apply dimension to attribute mapping
-                let mut attributes: BTreeMap<String, String> = BTreeMap::new();
+                let attributes: BTreeMap<String, String> = BTreeMap::new();
                 if let Some(otel_dimension_to_attribute_map) =
                     &config.otel_dimension_to_attribute_map
                 {
