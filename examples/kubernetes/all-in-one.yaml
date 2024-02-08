@@ -29,7 +29,7 @@ spec:
                 - all
             privileged: false
             readOnlyRootFilesystem: true
-          image: ghcr.io/cgascoig/intersight-otel:v0.0.3
+          image: ghcr.io/cgascoig/intersight-otel:v0.1.1-alpha01
           # args: ["-c", "/etc/intersight-otel/intersight-otel.toml"]
           command:
             - "/target/release/intersight_otel"
@@ -108,48 +108,49 @@ data:
     otel_collector_endpoint = "http://127.0.0.1:4317"
 
     [[pollers]]
-    name = "intersight.vm.count"
+    name = "intersight.vm_count"
+    otel_attributes = { "intersight.account.name" = "POD_NAME", "intersight.fsotype" = "account" }
     api_query = "api/v1/virtualization/VirtualMachines?$count=true"
     aggregator = "result_count"
-    interval = 300
+    interval = 60
 
     [[pollers]]
     name = "intersight.policy.ntp.count"
     api_query = "api/v1/ntp/Policies?$count=true"
     aggregator = "result_count"
-    interval = 300
+    interval = 60
 
     [[pollers]]
     name = "intersight.advisories.security.affected_objects"
     api_query = "api/v1/tam/AdvisoryInstances?$count=true&$filter=Advisory/ObjectType eq 'tam.SecurityAdvisory'"
     aggregator = "result_count"
-    interval = 300
+    interval = 60
 
     [[pollers]]
     name = "intersight.advisories.nonsecurity.affected_objects"
     api_query = "api/v1/tam/AdvisoryInstances?$count=true&$filter=Advisory/ObjectType ne 'tam.SecurityAdvisory'"
     aggregator = "result_count"
-    interval = 300
+    interval = 60
 
     [[pollers]]
     name = "intersight.advisories.security.count"
     api_query = "api/v1/tam/AdvisoryInstances?$filter=Advisory/ObjectType eq 'tam.SecurityAdvisory'&$apply=groupby((Advisory), aggregate($count as count))"
     aggregator = "count_results"
-    interval = 300
+    interval = 60
 
     [[pollers]]
     name = "intersight.alarms.count"
     otel_attributes = { severity = "critical" }
     api_query = "api/v1/cond/Alarms?$filter=Acknowledge eq 'None' and Severity eq 'Critical'&$count=true"
     aggregator = "result_count"
-    interval = 300
+    interval = 60
 
     [[pollers]]
     name = "intersight.alarms.count"
     otel_attributes = { severity = "warning" }
     api_query = "api/v1/cond/Alarms?$filter=Acknowledge eq 'None' and Severity eq 'Warning'&$count=true"
     aggregator = "result_count"
-    interval = 300
+    interval = 60
 
     [[tspollers]]
     name = "hx_performance"
@@ -160,8 +161,69 @@ data:
     post_aggregations = [{type = "arithmetic",name = "intersight.hyperflex.read.iops",fn = "/",fields = [{type = "fieldAccess",name = "read_ops_per_min",fieldName = "read_ops_per_min"},{type = "constant",name = "const",value = 300}]}, {type = "arithmetic",name = "intersight.hyperflex.write.iops",fn = "/",fields = [{type = "fieldAccess",name = "write_ops_per_min",fieldName = "write_ops_per_min"},{type = "constant",name = "const",value = 300}]},{type = "arithmetic", name = "intersight.hyperflex.read.throughput", fn = "/", fields = [{type = "fieldAccess", name = "read_tp_bytes_per_min", fieldName = "read_tp_bytes_per_min"},{type = "constant", name = "const", value = 300}]},{type = "arithmetic", name = "intersight.hyperflex.write.throughput", fn = "/", fields = [{type = "fieldAccess", name = "write_tp_bytes_per_min", fieldName = "write_tp_bytes_per_min"},{type = "constant", name = "const", value = 300}]},{type = "arithmetic", name = "intersight.hyperflex.read.latency", fn = "/", fields = [{type = "fieldAccess", name = "sum_read_latency", fieldName = "sum_read_latency"},{type = "fieldAccess",name = "read_ops_per_min", fieldName = "read_ops_per_min"}]},{type = "arithmetic", name = "intersight.hyperflex.write.latency", fn = "/", fields = [{type = "fieldAccess", name = "sum_write_latency",fieldName = "sum_write_latency"},{type = "fieldAccess", name = "write_ops_per_min", fieldName = "write_ops_per_min"}]}]
     field_names = ["intersight.hyperflex.read.iops", "intersight.hyperflex.write.iops", "intersight.hyperflex.read.throughput", "intersight.hyperflex.write.throughput", "intersight.hyperflex.read.latency", "intersight.hyperflex.write.latency"]
     otel_dimension_to_attribute_map = { deviceId = "intersight.hyperflex.device.id" }
-    interval = 300
-    # poller_type = "sum"
+    otel_attributes = { "intersight.account.name" = "POD_NAME", "intersight.fsotype" = "hyperflex_cluster"}
+    interval = 60
+
+    [[tspollers]]
+    name = "ucs_network_utilization"
+    datasource = "NetworkInterfaces"
+    dimensions = ["host.name"]
+    filter = { type = "and", fields = [{type = "selector", dimension = "instrument.name", value = "hw.network"}]}
+    aggregations = [{type = "longSum", name = "count", fieldName = "hw.network.bandwidth.utilization_all_count"}, {type = "doubleSum", name = "hw.network.bandwidth.utilization_all-Sum", fieldName = "hw.network.bandwidth.utilization_all"}]
+    post_aggregations = [{type = "arithmetic", name = "intersight.ucs.network.utilization.average", fn = "/", fields = [{type = "fieldAccess", name = "hw.network.bandwidth.utilization_all-Sum",fieldName = "hw.network.bandwidth.utilization_all-Sum"},{type = "fieldAccess", name = "count", fieldName = "count"}]}]
+    field_names = ["intersight.ucs.network.utilization.average"]
+    otel_dimension_to_attribute_map = { "host.name" = "intersight.host.name" }
+    otel_attributes = { "intersight.account.name" = "POD_NAME", "intersight.fsotype" = "ucs_domain"}
+    interval = 60
+
+    [[tspollers]]
+    name = "ucs_network_bytes"
+    datasource = "NetworkInterfaces"
+    dimensions = ["host.name"]
+    filter = { type = "and", fields = [{type = "selector", dimension = "instrument.name", value = "hw.network"}]}
+    aggregations = [{"type" = "doubleSum", "name" = "hw.network.io_transmit_duration-Sum", "fieldName" = "hw.network.io_transmit_duration"}, {"type" = "longSum", "name" = "hw.network.io_transmit-Sum", "fieldName" = "hw.network.io_transmit" }, {"type" = "doubleSum", "name" = "hw.network.io_receive_duration-Sum", "fieldName" = "hw.network.io_receive_duration"}, {"type" = "longSum", "name" = "hw.network.io_receive-Sum", "fieldName" = "hw.network.io_receive" }]
+
+    post_aggregations = [{type = "arithmetic", name = "intersight.ucs.network.transmit.rate", fn = "/", fields = [{type = "fieldAccess", name = "hw.network.io_transmit-Sum",fieldName = "hw.network.io_transmit-Sum"},{type = "fieldAccess", name = "hw.network.io_transmit_duration-Sum", fieldName = "hw.network.io_transmit_duration-Sum"}]}, {type = "arithmetic", name = "intersight.ucs.network.receive.rate", fn = "/", fields = [{type = "fieldAccess", name = "hw.network.io_receive-Sum",fieldName = "hw.network.io_receive-Sum"},{type = "fieldAccess", name = "hw.network.io_transmit_receive-Sum", fieldName = "hw.network.io_receive_duration-Sum"}]}]
+    field_names = ["intersight.ucs.network.transmit.rate", "intersight.ucs.network.receive.rate"]
+    otel_dimension_to_attribute_map = { "host.name" = "intersight.host.name" }
+    otel_attributes = { "intersight.account.name" = "POD_NAME", "intersight.fsotype" = "ucs_domain"}
+    interval = 60
+
+    [[tspollers]]
+    name = "ucs_fan_speed"
+    datasource = "PhysicalEntities"
+    dimensions = ["host.name"]
+    filter = { type = "and", fields = [{type = "selector", dimension = "instrument.name", value = "hw.fan"}]}
+    aggregations = [{type = "longSum", name = "count", fieldName = "hw.fan.speed_count"}, {type = "longSum", name = "hw.fan.speed-Sum", fieldName = "hw.fan.speed"}]
+    post_aggregations = [{"type" = "expression", "name" = "intersight.ucs.fan.speed", "expression" = "(\"hw.fan.speed-Sum\" / \"count\")"}]
+    field_names = ["intersight.ucs.fan.speed"]
+    otel_dimension_to_attribute_map = { "host.name" = "intersight.host.name" }
+    otel_attributes = { "intersight.account.name" = "POD_NAME", "intersight.fsotype" = "ucs_domain"}
+    interval = 60
+
+    [[tspollers]]
+    name = "ucs_host_power"
+    datasource = "PhysicalEntities"
+    dimensions = ["name"]
+    filter = { type = "and", fields = [{type = "selector", dimension = "instrument.name", value = "hw.host"}]}
+    aggregations = [{type = "longSum", name = "count", fieldName = "hw.host.power_count"}, {type = "doubleSum", name = "hw.host.power-Sum", fieldName = "hw.host.power"}]
+    post_aggregations = [{"type" = "expression", "name" = "intersight.ucs.host.power", "expression" = "(\"hw.host.power-Sum\" / \"count\")"}]
+    field_names = ["intersight.ucs.host.power"]
+    otel_dimension_to_attribute_map = { "name" = "intersight.name" }
+    otel_attributes = { "intersight.account.name" = "POD_NAME", "intersight.fsotype" = "ucs_domain"}
+    interval = 60
+
+    [[tspollers]]
+    name = "ucs_host_temperature"
+    datasource = "PhysicalEntities"
+    dimensions = ["host.name"]
+    filter = { type = "and", fields = [{type = "selector", dimension = "instrument.name", value = "hw.temperature"}, {type = "selector", dimension = "host.type", value = "compute.Blade"}]}
+    aggregations = [{type = "longSum", name = "count", fieldName = "hw.temperature_count"}, {type = "doubleSum", name = "hw.temperature-Sum", fieldName = "hw.temperature"}]
+    post_aggregations = [{"type" = "expression", "name" = "intersight.ucs.host.temperature", "expression" = "(\"hw.temperature-Sum\" / \"count\")"}]
+    field_names = ["intersight.ucs.host.temperature"]
+    otel_dimension_to_attribute_map = { "host.name" = "intersight.host.name" }
+    otel_attributes = { "intersight.account.name" = "POD_NAME", "intersight.fsotype" = "ucs_domain"}
+    interval = 60
 ---
 apiVersion: v1
 kind: Service
@@ -1006,13 +1068,589 @@ data:
           "type": "stat"
         },
         {
+          "collapsed": false,
           "gridPos": {
             "h": 1,
             "w": 24,
             "x": 0,
             "y": 12
           },
+          "id": 35,
+          "panels": [],
+          "title": "UCS Environmentals",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisLabel": "Power",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "watt"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 19,
+            "x": 0,
+            "y": 13
+          },
+          "id": 39,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": true,
+              "expr": "intersight_ucs_host_power{}",
+              "interval": "",
+              "legendFormat": "{{intersight_name}}",
+              "refId": "A"
+            }
+          ],
+          "title": "UCS Host Power",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisLabel": "Temp",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "celsius"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 19,
+            "x": 0,
+            "y": 21
+          },
+          "id": 41,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": true,
+              "expr": "intersight_ucs_host_temperature{}",
+              "interval": "",
+              "legendFormat": "{{intersight_host_name}}",
+              "refId": "A"
+            }
+          ],
+          "title": "UCS Host Temperature",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "axisSoftMin": 0,
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "rotrpm"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 19,
+            "x": 0,
+            "y": 31
+          },
+          "id": 37,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": true,
+              "expr": "intersight_ucs_fan_speed{}",
+              "interval": "",
+              "legendFormat": "{{intersight_host_name}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Fan Speed",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 39
+          },
+          "id": 29,
+          "panels": [],
+          "title": "UCS",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisLabel": "Network Utilisation (%)",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "percent"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 15,
+            "x": 0,
+            "y": 40
+          },
+          "id": 31,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": true,
+              "expr": "intersight_ucs_network_utilization_average{}",
+              "interval": "",
+              "legendFormat": "{{intersight_host_name}}",
+              "refId": "A"
+            }
+          ],
+          "title": "UCS Network Utilisation",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisLabel": "Bps",
+                "axisPlacement": "auto",
+                "axisSoftMin": 0,
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "Bps"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 15,
+            "x": 0,
+            "y": 47
+          },
+          "id": 32,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": true,
+              "expr": "intersight_ucs_network_transmit_rate{}",
+              "interval": "",
+              "legendFormat": "{{intersight_host_name}}",
+              "refId": "A"
+            }
+          ],
+          "title": "UCS Network TX",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisLabel": "Bps",
+                "axisPlacement": "auto",
+                "axisSoftMin": 0,
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "Bps"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 15,
+            "x": 0,
+            "y": 54
+          },
+          "id": 33,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "exemplar": true,
+              "expr": "intersight_ucs_network_receive_rate{}",
+              "interval": "",
+              "legendFormat": "{{intersight_host_name}}",
+              "refId": "A"
+            }
+          ],
+          "title": "UCS Network RX",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 61
+          },
           "id": 24,
+          "panels": [],
           "title": "HyperFlex",
           "type": "row"
         },
@@ -1075,7 +1713,7 @@ data:
             "h": 6,
             "w": 15,
             "x": 0,
-            "y": 13
+            "y": 62
           },
           "id": 2,
           "options": {
@@ -1176,7 +1814,7 @@ data:
             "h": 6,
             "w": 15,
             "x": 0,
-            "y": 19
+            "y": 68
           },
           "id": 18,
           "options": {
@@ -1277,7 +1915,7 @@ data:
             "h": 6,
             "w": 15,
             "x": 0,
-            "y": 25
+            "y": 74
           },
           "id": 26,
           "options": {
@@ -1298,7 +1936,7 @@ data:
                 "uid": "prometheus"
               },
               "exemplar": false,
-              "expr": "intersight_hyperflex_read_latency{i}",
+              "expr": "intersight_hyperflex_read_latency{}",
               "interval": "",
               "legendFormat": "",
               "refId": "A"
@@ -1328,13 +1966,13 @@ data:
         "list": []
       },
       "time": {
-        "from": "now-1h",
+        "from": "now-24h",
         "to": "now"
       },
       "timepicker": {},
       "timezone": "",
-      "title": "Example Intersight Dashboard",
-      "uid": "zGUlvB8Vk2",
-      "version": 1,
+      "title": "intersight-cl-emea-24",
+      "uid": "c-x8gk2Sz",
+      "version": 4,
       "weekStart": ""
     }
