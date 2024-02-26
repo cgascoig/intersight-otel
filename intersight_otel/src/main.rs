@@ -1,7 +1,5 @@
 use anyhow::{Context, Result};
 
-use std::fs;
-
 #[macro_use]
 extern crate log;
 
@@ -22,8 +20,22 @@ async fn main() -> Result<()> {
         config.key_file
     );
 
-    let key_bytes = fs::read(&config.key_file)?;
-    let client = intersight_api::Client::from_key_bytes(config.key_id(), &key_bytes, None)?;
+    // let key_bytes = fs::read(&config.key_file)?;
+    // let client = intersight_api::Client::from_key_bytes(config.key_id(), &key_bytes, None)?;
+
+    let mut intersight_config = intersight_api::config::Config::new()
+        .with_key_id(config.key_id())
+        .with_key_file(&config.key_file)?;
+
+    if let Some(intersight_host) = config.intersight_host {
+        intersight_config = intersight_config.with_host(&intersight_host);
+    }
+
+    if let Some(intersight_accpet_invalid_certs) = config.intersight_accept_invalid_certs {
+        intersight_config = intersight_config.with_insecure(intersight_accpet_invalid_certs)
+    }
+
+    let client = intersight_config.build_client()?;
 
     // Create a multi-producer single-consumer channel for poller tasks to send metrics to the metric_merger task
     let (metric_chan_tx, metric_chan_rx) = tokio::sync::mpsc::channel(32);

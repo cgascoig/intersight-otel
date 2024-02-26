@@ -1,11 +1,14 @@
+pub mod config;
 pub mod simplesigner;
 
 use std::sync::Arc;
 
 use crate::simplesigner::{Signer, SignerError};
 use http_signature_normalization_reqwest::prelude::*;
+
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::io::Error as IoError;
 
 #[macro_use]
 extern crate log;
@@ -20,10 +23,12 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn from_key_bytes(
+    fn from_key_bytes(
         key_id: &str,
         pem: &[u8],
         passphrase: Option<&[u8]>,
+        host: &str,
+        accept_invalid_certs: bool,
     ) -> Result<Self, IntersightError> {
         let signer;
         if let Some(_passphrase) = passphrase {
@@ -42,6 +47,7 @@ impl Client {
 
         let client = reqwest::Client::builder()
             .connection_verbose(true)
+            .danger_accept_invalid_certs(accept_invalid_certs)
             .build()
             .map_err(|_| IntersightError::ClientError)?;
 
@@ -50,7 +56,7 @@ impl Client {
             signer,
             signing_config,
             client,
-            host: "intersight.com".to_string(),
+            host: host.to_string(),
         })
     }
 
@@ -142,6 +148,12 @@ enum Method {
 
 #[derive(thiserror::Error, Debug)]
 pub enum IntersightError {
+    #[error("Invalid parameter for Intersight API")]
+    InvalidParamater(String),
+
+    #[error("error reading private key")]
+    KeyReadError(#[from] IoError),
+
     #[error("error loading private key")]
     KeyError,
 

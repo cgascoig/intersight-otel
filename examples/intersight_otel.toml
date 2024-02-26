@@ -1,4 +1,6 @@
 otel_collector_endpoint = "http://127.0.0.1:4317"
+# intersight_host = "intersight.com"
+# intersight_accept_invalid_certs = true
 
 [[pollers]]
 name = "intersight.vm.count"

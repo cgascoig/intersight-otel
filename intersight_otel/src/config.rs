@@ -9,6 +9,8 @@ use std::collections::HashMap;
 pub struct GlobalConfig {
     pub key_file: String,
     key_id: String,
+    pub intersight_host: Option<String>,
+    pub intersight_accept_invalid_certs: Option<bool>,
     pub otel_collector_endpoint: String,
     pub pollers: Option<Vec<PollerConfig>>,
     pub tspollers: Option<Vec<TSPollerConfig>>,
