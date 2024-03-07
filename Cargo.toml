@@ -3,3 +3,4 @@ members = [
     "intersight_api",
     "intersight_otel",
 ]
+resolver = "2"

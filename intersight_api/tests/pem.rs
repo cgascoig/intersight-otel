@@ -1,3 +1,4 @@
+use base64::prelude::*;
 use intersight_api::simplesigner::{Signer, SignerError};
 
 const PEM_V2_EXAMPLE: &[u8] = include_bytes!("examples/example-v2.pem");
@@ -9,7 +10,7 @@ fn test_load_pem_v2() -> Result<(), SignerError> {
     assert!(matches!(signer, Signer::Rsa { .. }));
 
     let sig = signer.sign_to_vec("123".as_bytes())?;
-    print!("V2 sig: {}", base64::encode(sig));
+    print!("V2 sig: {}", BASE64_STANDARD.encode(sig));
 
     Ok(())
 }
@@ -20,7 +21,7 @@ fn test_load_pem_v3() -> Result<(), SignerError> {
     assert!(matches!(signer, Signer::Ecdsa { .. }));
 
     let sig = signer.sign_to_vec("123".as_bytes())?;
-    print!("V3 sig: {}", base64::encode(sig));
+    print!("V3 sig: {}", BASE64_STANDARD.encode(sig));
 
     Ok(())
 }
