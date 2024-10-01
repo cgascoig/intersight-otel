@@ -27,4 +27,4 @@ chrono = "0.4"
 
 opentelemetry_api = { version = "0.20.0", features = ["metrics"] }
 opentelemetry-proto = { version = "0.3.0", features = ["gen-tonic", "metrics"]}
-tonic = "0.9.0"
+tonic = "0.12.3"
