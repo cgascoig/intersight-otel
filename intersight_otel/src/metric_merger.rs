@@ -79,6 +79,7 @@ impl From<IntersightResourceMetrics> for ResourceMetrics {
                 name: m.name,
                 description: "".to_string(),
                 unit: "".to_string(),
+                metadata: vec![],
                 data: Some(Data::Gauge(Gauge {
                     data_points: vec![NumberDataPoint {
                         attributes: vec![],

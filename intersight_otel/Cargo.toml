@@ -26,5 +26,8 @@ chrono = "0.4"
 # futures-util = { version = "0.3", default-features = false, features = ["std"] }
 
 opentelemetry_api = { version = "0.20.0", features = ["metrics"] }
-opentelemetry-proto = { version = "0.3.0", features = ["gen-tonic", "metrics"]}
+opentelemetry-proto = { version = "0.27.0", features = [
+    "gen-tonic",
+    "metrics",
+] }
 tonic = "0.12.3"
