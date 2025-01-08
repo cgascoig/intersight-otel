@@ -1,5 +1,6 @@
 use ring::signature::{self, EcdsaKeyPair, RsaKeyPair};
 
+#[derive(Debug)]
 pub enum Signer {
     Rsa(Box<RsaKeyPair>),
     Ecdsa(EcdsaKeyPair),
@@ -56,6 +57,6 @@ impl Signer {
 
 #[derive(thiserror::Error, Debug)]
 pub enum SignerError {
-    #[error("error loading private key")]
+    #[error("error loading private key: {0}")]
     KeyError(String),
 }

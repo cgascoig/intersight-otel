@@ -40,7 +40,10 @@ impl Client {
             // Encrypted private key support is unimplemented
             return Err(IntersightError::KeyError);
         } else {
-            signer = Signer::from_pem(pem).map_err(|_| IntersightError::KeyError)?;
+            signer = Signer::from_pem(pem).map_err(|e| {
+                print!("SignerError: {e}");
+                IntersightError::KeyError
+            })?;
         }
 
         let signer = Arc::new(signer);
