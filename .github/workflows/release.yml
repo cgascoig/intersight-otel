@@ -102,7 +102,7 @@ jobs:
           fi
           tar --directory target/$TARGET/release -czf ./artifacts/$NAME-$TARGET_NAME-$TAG.tar.gz $EXEC
       - name: Archive artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: result
           path: |
@@ -171,7 +171,7 @@ jobs:
           echo ./macosbins contents:
           find ./macosbins -type f | xargs shasum
       - name: Archive artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: signed-result
           path: |
