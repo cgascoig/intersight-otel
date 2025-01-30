@@ -29,7 +29,7 @@ spec:
                 - all
             privileged: false
             readOnlyRootFilesystem: true
-          image: ghcr.io/cgascoig/intersight-otel:v0.1.1-alpha01
+          image: ghcr.io/cgascoig/intersight-otel:v0.1.2
           # args: ["-c", "/etc/intersight-otel/intersight-otel.toml"]
           command:
             - "/target/release/intersight_otel"
@@ -273,9 +273,6 @@ data:
         check_interval: 5s
     extensions:
       zpages: {}
-      memory_ballast:
-        # Memory Ballast size should be max 1/3 to 1/2 of memory.
-        size_mib: 683
     exporters:
       prometheus:
         endpoint: ":2112"
@@ -286,8 +283,8 @@ data:
         enable_open_metrics: true
         resource_to_telemetry_conversion:
           enabled: true
-      logging:
-        loglevel: debug
+      debug:
+        verbosity: detailed
       # awsemf:
       #   region: 'ap-southeast-2'
       #   resource_to_telemetry_conversion:
@@ -296,12 +293,12 @@ data:
       #   log_stream_name: otel_stream
       #   namespace: intersight
     service:
-      extensions: [zpages, memory_ballast]
+      extensions: [zpages]
       pipelines:
         metrics:
           receivers: [otlp]
           processors: [memory_limiter, batch]
-          exporters: [logging, prometheus]
+          exporters: [debug, prometheus]
 ---
 apiVersion: v1
 kind: ConfigMap
