@@ -205,4 +205,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          asset_paths: '["./artifacts/*.tar.gz", "./artifacts/*.zip"]'
+          asset_paths: '["./artifacts/intersight_otel-linux*.tar.gz", "./artifacts/intersight_otel-win*.tar.gz", "./artifacts/intersight_otel-macos*.zip"]'
