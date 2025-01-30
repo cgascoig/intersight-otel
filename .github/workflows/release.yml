@@ -104,18 +104,23 @@ jobs:
       - name: Archive artifact
         uses: actions/upload-artifact@v4
         with:
-          name: result
+          name: result-${{matrix.TARGET_NAME}}
           path: |
             ./artifacts
   sign-macos-binaries:
     needs: build-binaries
     runs-on: macos-latest
     steps:
-      - name: Download artifacts
+      - name: Download x86_64 artifacts
         uses: actions/download-artifact@v4.1.7
         with:
-          name: result
-          path: ./artifacts
+          name: result-macos-x86_64
+          path: ./artifacts-macos-x86_64
+      - name: Download arm64 artifacts
+        uses: actions/download-artifact@v4.1.7
+        with:
+          name: result-macos-arm64
+          path: ./artifacts-macos-arm64
       - name: Import Code-Signing Certificates
         uses: Apple-Actions/import-codesign-certs@v1
         with:
@@ -129,6 +134,10 @@ jobs:
           AC_PASSWORD: ${{ secrets.AC_PASSWORD }}
           AC_TEAM: ${{ secrets.AC_TEAM }}
         run: |
+          mkdir artifacts
+          cp ./artifacts-macos-x86_64/* ./artifacts
+          cp ./artifacts-macos-arm64/* ./artifacts
+
           echo Before signing
           echo ./artifacts contents:
           find ./artifacts -type f | xargs shasum
@@ -186,7 +195,7 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4.1.7
         with:
-          name: signed-result
+          pattern: "*result*"
           path: ./artifacts
       - name: List
         run: find ./artifacts
