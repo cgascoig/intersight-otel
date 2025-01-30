@@ -1,3 +1,4 @@
+use ring::rand;
 use ring::signature::{self, EcdsaKeyPair, RsaKeyPair};
 
 #[derive(Debug)]
@@ -18,8 +19,9 @@ impl Signer {
 
             return Ok(Signer::Rsa(Box::new(keypair)));
         } else if type_label == "EC PRIVATE KEY" {
+            let rng = rand::SystemRandom::new();
             let keypair =
-                EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, &der)
+                EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, &der, &rng)
                     .map_err(|e| {
                         SignerError::KeyError(format!("error decoding EC private key: {}", e))
                     })?;
@@ -33,7 +35,7 @@ impl Signer {
     pub fn sign_to_vec(&self, data: &[u8]) -> Result<Vec<u8>, SignerError> {
         match self {
             Signer::Rsa(keypair) => {
-                let size = keypair.public_modulus_len();
+                let size = keypair.public().modulus_len();
                 let mut buf = vec![0; size];
                 keypair
                     .sign(
