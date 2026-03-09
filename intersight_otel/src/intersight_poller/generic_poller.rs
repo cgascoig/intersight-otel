@@ -1,6 +1,7 @@
 use super::{IntersightMetric, IntersightMetricBatch, IntersightResourceMetrics};
 use intersight_api::{Client, IntersightError};
 use serde_json::Value;
+use std::time::SystemTime;
 
 pub async fn poll(
     client: &Client,
@@ -69,8 +70,13 @@ impl Aggregator for ResultCountingAggregator {
             return vec![];
         }
 
-        ret.metrics
-            .push(IntersightMetric::new(&self.name, count as f64, None));
+        ret.metrics.push(IntersightMetric::new(
+            &self.name,
+            count as f64,
+            None,
+            SystemTime::now(),
+            SystemTime::now(),
+        ));
 
         vec![ret]
     }
@@ -104,8 +110,13 @@ impl Aggregator for ResultCountAggregator {
             return vec![];
         }
 
-        ret.metrics
-            .push(IntersightMetric::new(&self.name, count as f64, None));
+        ret.metrics.push(IntersightMetric::new(
+            &self.name,
+            count as f64,
+            None,
+            SystemTime::now(),
+            SystemTime::now(),
+        ));
 
         vec![ret]
     }

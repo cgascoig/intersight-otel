@@ -73,7 +73,7 @@ async fn init_metrics_client(
 impl From<IntersightResourceMetrics> for ResourceMetrics {
     fn from(value: IntersightResourceMetrics) -> Self {
         let mut metrics = vec![];
-        let start_time = value.start_time.unwrap_or(SystemTime::now());
+        // let start_time = value.start_time.unwrap_or(SystemTime::now());
         for m in value.metrics {
             metrics.push(Metric {
                 name: m.name,
@@ -83,18 +83,28 @@ impl From<IntersightResourceMetrics> for ResourceMetrics {
                 data: Some(Data::Gauge(Gauge {
                     data_points: vec![NumberDataPoint {
                         attributes: vec![],
-                        start_time_unix_nano: start_time
-                            .checked_sub(Duration::from_secs(m.timestamp_offset))
-                            .expect("Unable to apply timestamp offset")
-                            .duration_since(UNIX_EPOCH)
+                        start_time_unix_nano: m
+                            .start_time
+                            .duration_since(SystemTime::UNIX_EPOCH)
                             .expect("Time went backwards")
                             .as_nanos() as u64,
-                        time_unix_nano: SystemTime::now()
-                            .checked_sub(Duration::from_secs(m.timestamp_offset))
-                            .expect("Unable to apply timestamp offset")
-                            .duration_since(UNIX_EPOCH)
+                        time_unix_nano: m
+                            .time
+                            .duration_since(SystemTime::UNIX_EPOCH)
                             .expect("Time went backwards")
                             .as_nanos() as u64,
+                        // start_time_unix_nano: start_time
+                        //     .checked_sub(Duration::from_secs(m.timestamp_offset))
+                        //     .expect("Unable to apply timestamp offset")
+                        //     .duration_since(UNIX_EPOCH)
+                        //     .expect("Time went backwards")
+                        //     .as_nanos() as u64,
+                        // time_unix_nano: SystemTime::now()
+                        //     .checked_sub(Duration::from_secs(m.timestamp_offset))
+                        //     .expect("Unable to apply timestamp offset")
+                        //     .duration_since(UNIX_EPOCH)
+                        //     .expect("Time went backwards")
+                        //     .as_nanos() as u64,
                         exemplars: vec![],
                         flags: 0,
                         value: Some(Value::AsDouble(m.value)),

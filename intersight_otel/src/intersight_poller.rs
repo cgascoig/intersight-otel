@@ -18,6 +18,8 @@ pub struct IntersightMetric {
     pub attributes: BTreeMap<String, String>,
     pub value: f64,
     pub timestamp_offset: u64,
+    pub start_time: SystemTime,
+    pub time: SystemTime,
 }
 
 impl IntersightMetric {
@@ -25,12 +27,16 @@ impl IntersightMetric {
         name: &str,
         value: f64,
         attributes: Option<BTreeMap<String, String>>,
+        start_time: SystemTime,
+        time: SystemTime,
     ) -> IntersightMetric {
         IntersightMetric {
             name: name.to_string(),
             attributes: attributes.unwrap_or_default(),
             value,
             timestamp_offset: 0,
+            start_time,
+            time,
         }
     }
 }
