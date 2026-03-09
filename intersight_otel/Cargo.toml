@@ -31,3 +31,5 @@ opentelemetry-proto = { version = "0.27.0", features = [
     "metrics",
 ] }
 tonic = "0.12.3"
+regex = "1"
+serde_json_path = "0.7"

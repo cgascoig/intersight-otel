@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use anyhow::{bail, Result};
@@ -7,6 +8,7 @@ use intersight_api::Client;
 use opentelemetry_proto::tonic::common::v1::{any_value, AnyValue, KeyValue};
 use tokio::{sync::mpsc::Sender, task::JoinHandle, time};
 
+use crate::attribute_enricher::AttributeEnricher;
 use crate::config::{OTelAttributeProvider, PollerConfig, TSPollerConfig};
 
 mod generic_poller;
@@ -66,6 +68,7 @@ pub fn start_intersight_poller(
     tx: Sender<IntersightMetricBatch>,
     client: &Client,
     config: &PollerConfig,
+    enrichers: Vec<Arc<AttributeEnricher>>,
 ) -> Result<JoinHandle<()>> {
     let client = (*client).clone();
     let config = (*config).clone();
@@ -88,6 +91,9 @@ pub fn start_intersight_poller(
 
             if let Ok(mut r) = poll_result {
                 add_otel_attributes(&mut r, &config);
+                for enricher in &enrichers {
+                    enricher.enrich_batch(&mut r).await;
+                }
                 add_start_time(&mut r, start_time);
                 if let Err(err) = tx.send(r).await {
                     error!("metrics receiver thread dropped: {}", err);
@@ -105,6 +111,7 @@ pub fn start_intersight_tspoller(
     tx: Sender<IntersightMetricBatch>,
     client: &Client,
     config: &TSPollerConfig,
+    enrichers: Vec<Arc<AttributeEnricher>>,
 ) -> Result<JoinHandle<()>> {
     let client = (*client).clone();
     let config = (*config).clone();
@@ -120,6 +127,9 @@ pub fn start_intersight_tspoller(
 
             if let Ok(mut r) = poll_result {
                 add_otel_attributes(&mut r, &config);
+                for enricher in &enrichers {
+                    enricher.enrich_batch(&mut r).await;
+                }
                 add_start_time(&mut r, start_time);
                 if let Err(err) = tx.send(r).await {
                     error!("metrics receiver thread dropped: {}", err);

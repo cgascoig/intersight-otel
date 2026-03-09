@@ -3,6 +3,7 @@ use anyhow::{Context, Result};
 #[macro_use]
 extern crate log;
 
+mod attribute_enricher;
 mod config;
 mod intersight_poller;
 mod metric_merger;
@@ -43,13 +44,24 @@ async fn main() -> Result<()> {
     let merge_handle =
         metric_merger::start_metric_merger(metric_chan_rx, &config.otel_collector_endpoint);
 
+    // Build the shared enricher map once
+    let enricher_map = attribute_enricher::build_enricher_map(
+        config.enrichers.as_deref().unwrap_or_default(),
+        &client,
+    );
+
     // Start all the pollers based on the config file(s)
     if let Some(poller_configs) = config.pollers {
         for poller_config in poller_configs {
+            let enrichers = attribute_enricher::resolve_enrichers(
+                poller_config.enrichers.as_deref().unwrap_or_default(),
+                &enricher_map,
+            );
             intersight_poller::start_intersight_poller(
                 metric_chan_tx.clone(),
                 &client,
                 &poller_config,
+                enrichers,
             )?;
         }
     }
@@ -57,10 +69,15 @@ async fn main() -> Result<()> {
     // Start all the timeseries pollers based on the config file(s)
     if let Some(tspoller_configs) = config.tspollers {
         for tspoller_config in tspoller_configs {
+            let enrichers = attribute_enricher::resolve_enrichers(
+                tspoller_config.enrichers.as_deref().unwrap_or_default(),
+                &enricher_map,
+            );
             intersight_poller::start_intersight_tspoller(
                 metric_chan_tx.clone(),
                 &client,
                 &tspoller_config,
+                enrichers,
             )?;
         }
     }
