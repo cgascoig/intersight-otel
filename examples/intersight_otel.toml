@@ -46,6 +46,38 @@ api_query = "api/v1/cond/Alarms?$filter=Acknowledge eq 'None' and Severity eq 'W
 aggregator = "result_count"
 interval = 300
 
+# Attribute enrichers look up additional OTel attributes from the Intersight API
+# and attach them to metrics. They are referenced by name from pollers/tspollers
+# via the `enrichers` field.
+#
+# This example looks up the server profile name for a UCS server and attaches it
+# as the `intersight.server_profile.name` attribute.
+#
+# [[tspollers]]
+# name = "ucs_hw_cpu_utilization"
+# datasource = "PhysicalEntities"
+# dimensions = ["host.name", "host.id"]
+# filter = { type = "and", fields = [
+#     { type = "selector", dimension = "instrument.name", value = "hw.cpu" },
+# ] }
+# aggregations = [
+#     { type = "doubleLast", name = "intersight.hw.cpu.utilization_c0", fieldName = "hw.cpu.utilization_c0" },
+# ]
+# field_names = ["intersight.hw.cpu.utilization_c0"]
+# otel_dimension_to_attribute_map = { "host.name" = "intersight.name", "host.id" = "host.id" }
+# interval = 300
+# enrichers = ["server_profile"]
+#
+# [[enrichers]]
+# name = "server_profile"
+# source_attribute = "host.id"
+# # Extract the Moid (last path segment) from a value like "/api/v1/compute/Blades/<moid>"
+# source_value_regex = "[^/]+$"
+# query_template = "api/v1/server/Profiles?$filter=AssignedServer.Moid eq '{value}' or AssociatedServer.Moid eq '{value}'"
+# result_mappings = [
+#     { result_field = "$.Results[0].Name", result_attribute = "intersight.server_profile.name" },
+# ]
+
 [[tspollers]]
 name = "hx_performance"
 datasource = "hx"
