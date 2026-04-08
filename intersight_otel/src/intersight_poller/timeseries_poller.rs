@@ -48,7 +48,9 @@ pub async fn poll(client: &Client, config: &TSPollerConfig) -> Result<Intersight
                             resource_metrics.attributes.push(KeyValue {
                                 key: attribute_name.clone(),
                                 value: Some(AnyValue {
-                                    value: Some(any_value::Value::StringValue(v.to_string())),
+                                    value: Some(any_value::Value::StringValue(
+                                        v.as_str().map(String::from).unwrap_or_else(|| v.to_string()),
+                                    )),
                                 }),
                             })
                         }

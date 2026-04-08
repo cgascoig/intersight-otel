@@ -15,7 +15,7 @@ use opentelemetry_proto::{
         resource::v1::Resource,
     },
 };
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 use tonic::transport::{self, Channel};

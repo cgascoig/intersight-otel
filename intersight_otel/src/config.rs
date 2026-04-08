@@ -6,6 +6,23 @@ use std::collections::HashMap;
 
 #[derive(Debug, Deserialize, Clone)]
 #[allow(unused)]
+pub struct ResultMappingConfig {
+    pub result_field: String,
+    pub result_attribute: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[allow(unused)]
+pub struct AttributeEnricherConfig {
+    pub name: String,
+    pub source_attribute: String,
+    pub source_value_regex: Option<String>,
+    pub query_template: String,
+    pub result_mappings: Vec<ResultMappingConfig>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[allow(unused)]
 pub struct GlobalConfig {
     pub key_file: String,
     key_id: String,
@@ -14,6 +31,7 @@ pub struct GlobalConfig {
     pub otel_collector_endpoint: String,
     pub pollers: Option<Vec<PollerConfig>>,
     pub tspollers: Option<Vec<TSPollerConfig>>,
+    pub enrichers: Option<Vec<AttributeEnricherConfig>>,
 }
 
 impl GlobalConfig {
@@ -29,7 +47,7 @@ impl GlobalConfig {
     }
 
     pub fn key_id(&self) -> &str {
-        return self.key_id.trim();
+        self.key_id.trim()
     }
 }
 
@@ -45,16 +63,14 @@ pub struct PollerConfig {
     pub aggregator_options: Option<HashMap<String, String>>,
     pub name: String,
     pub otel_attributes: Option<HashMap<String, String>>,
+    pub enrichers: Option<Vec<String>>,
 
     interval: Option<u64>, // interval is private with a getter because it might change to human strings like "5m" in the future
 }
 
 impl PollerConfig {
     pub fn interval(&self) -> u64 {
-        match self.interval {
-            Some(x) => x,
-            _ => 10,
-        }
+        self.interval.unwrap_or(10)
     }
 }
 
@@ -80,6 +96,7 @@ pub struct TSPollerConfig {
 
     pub otel_attributes: Option<HashMap<String, String>>,
     pub otel_dimension_to_attribute_map: Option<HashMap<String, String>>,
+    pub enrichers: Option<Vec<String>>,
 }
 
 pub enum TSPollerType {
@@ -101,10 +118,7 @@ impl TSPollerConfig {
     }
 
     pub fn interval(&self) -> u64 {
-        match self.interval {
-            Some(x) => x,
-            _ => 10,
-        }
+        self.interval.unwrap_or(10)
     }
 }
 
