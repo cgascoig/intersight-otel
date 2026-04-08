@@ -21,10 +21,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Log in to the Container registry
-        uses: docker/login-action@v2.1.0
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -32,12 +32,12 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@v4.4.0
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v4.0.0
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -67,9 +67,9 @@ jobs:
       NAME: intersight_otel
     runs-on: ${{matrix.OS}}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
       - name: Cargo cache
-        uses: actions/cache@v3
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -102,7 +102,7 @@ jobs:
           fi
           tar --directory target/$TARGET/release -czf ./artifacts/$NAME-$TARGET_NAME-$TAG.tar.gz $EXEC
       - name: Archive artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: result-${{matrix.TARGET_NAME}}
           path: |
@@ -112,17 +112,17 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Download x86_64 artifacts
-        uses: actions/download-artifact@v4.1.7
+        uses: actions/download-artifact@v8
         with:
           name: result-macos-x86_64
           path: ./artifacts-macos-x86_64
       - name: Download arm64 artifacts
-        uses: actions/download-artifact@v4.1.7
+        uses: actions/download-artifact@v8
         with:
           name: result-macos-arm64
           path: ./artifacts-macos-arm64
       - name: Import Code-Signing Certificates
-        uses: Apple-Actions/import-codesign-certs@v1
+        uses: Apple-Actions/import-codesign-certs@v6
         with:
           # The certificates in a PKCS12 file encoded as a base64 string
           p12-file-base64: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_CERT_P12_B64 }}
@@ -193,7 +193,7 @@ jobs:
       packages: write
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v4.1.7
+        uses: actions/download-artifact@v8
         with:
           pattern: "*result*"
           path: ./artifacts
