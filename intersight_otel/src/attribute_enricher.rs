@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant, SystemTime};
 
 use intersight_api::Client;
 use opentelemetry_proto::tonic::common::v1::{any_value, AnyValue, KeyValue};
@@ -8,9 +9,24 @@ use tokio::sync::Mutex;
 use crate::config::AttributeEnricherConfig;
 use crate::intersight_poller::IntersightMetricBatch;
 
+const CACHE_TTL_SECS: u64 = 3600;
+const CACHE_JITTER_SECS: u64 = 300;
+
+struct CacheEntry {
+    value: Option<HashMap<String, String>>,
+    expires_at: Instant,
+}
+
+fn jitter_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos() as u64 % CACHE_JITTER_SECS)
+        .unwrap_or(0)
+}
+
 pub struct AttributeEnricher {
     config: AttributeEnricherConfig,
-    cache: Mutex<HashMap<String, Option<HashMap<String, String>>>>,
+    cache: Mutex<HashMap<String, CacheEntry>>,
     client: Client,
     compiled_regex: Option<regex::Regex>,
 }
@@ -35,6 +51,8 @@ impl AttributeEnricher {
 
     pub async fn enrich_batch(&self, batch: &mut IntersightMetricBatch) {
         trace!("enrich_batch called");
+        let mut enriched = 0usize;
+        let mut skipped = 0usize;
 
         for resource in batch {
             // Find the source attribute value
@@ -51,6 +69,7 @@ impl AttributeEnricher {
             });
 
             let Some(source_value) = source_value else {
+                skipped += 1;
                 continue;
             };
 
@@ -62,6 +81,7 @@ impl AttributeEnricher {
                             "Enricher '{}': regex did not match source value '{}'",
                             self.config.name, source_value
                         );
+                        skipped += 1;
                         continue;
                     }
                 },
@@ -79,24 +99,42 @@ impl AttributeEnricher {
                         }),
                     });
                 }
+                enriched += 1;
+            } else {
+                skipped += 1;
             }
         }
+        debug!(
+            "Enricher '{}': enriched {}/{} resources",
+            self.config.name,
+            enriched,
+            enriched + skipped
+        );
     }
 
     async fn lookup(&self, source_value: &str) -> Option<HashMap<String, String>> {
         {
             let cache = self.cache.lock().await;
-            if let Some(cached) = cache.get(source_value) {
-                return cached.clone();
+            if let Some(entry) = cache.get(source_value) {
+                if Instant::now() < entry.expires_at {
+                    return entry.value.clone();
+                }
+                // Entry expired; fall through to re-lookup
             }
         }
 
         let result = self.do_lookup(source_value).await;
 
-        {
-            let mut cache = self.cache.lock().await;
-            cache.insert(source_value.to_string(), result.clone());
-        }
+        let expires_at =
+            Instant::now() + Duration::from_secs(CACHE_TTL_SECS + jitter_secs());
+        let mut cache = self.cache.lock().await;
+        cache.insert(
+            source_value.to_string(),
+            CacheEntry {
+                value: result.clone(),
+                expires_at,
+            },
+        );
 
         result
     }
