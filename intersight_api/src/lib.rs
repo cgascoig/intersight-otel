@@ -182,7 +182,11 @@ impl Client {
         let response = self.client.execute(req).await?;
 
         if !response.status().is_success() {
-            return Err(IntersightError::ApiError(response.status().as_u16()));
+            let status = response.status().as_u16();
+            if let Ok(body) = response.text().await {
+                trace!("Intersight API error response body: {}", body);
+            }
+            return Err(IntersightError::ApiError(status));
         }
 
         let body = response.bytes().await.map_err(IntersightError::Body)?;
