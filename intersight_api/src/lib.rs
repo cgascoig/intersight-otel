@@ -1,7 +1,7 @@
 pub mod config;
 pub mod simplesigner;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use crate::simplesigner::{Signer, SignerError};
 use http_signature_normalization_reqwest::prelude::*;
@@ -56,6 +56,8 @@ impl Client {
         let client = reqwest::Client::builder()
             .connection_verbose(true)
             .danger_accept_invalid_certs(accept_invalid_certs)
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
             .build()
             .map_err(|_| IntersightError::ClientError)?;
 
@@ -177,7 +179,15 @@ impl Client {
 
         trace!("Request built: {:#?}", req);
 
-        let response = self.client.execute(req).await?; //req.send().await?;
+        let response = self.client.execute(req).await?;
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            if let Ok(body) = response.text().await {
+                trace!("Intersight API error response body: {}", body);
+            }
+            return Err(IntersightError::ApiError(status));
+        }
 
         let body = response.bytes().await.map_err(IntersightError::Body)?;
 
@@ -222,6 +232,9 @@ pub enum IntersightError {
 
     #[error("Failed to parse response: {0}")]
     ResponseError(#[from] serde_json::Error),
+
+    #[error("Intersight API returned HTTP {0}")]
+    ApiError(u16),
 }
 
 #[tokio::test]

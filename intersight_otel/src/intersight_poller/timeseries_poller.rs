@@ -32,12 +32,17 @@ pub async fn poll(client: &Client, config: &TSPollerConfig) -> Result<Intersight
     let mut ret: IntersightMetricBatch = vec![];
 
     if let Value::Array(results) = response {
+        if results.is_empty() {
+            warn!(
+                "Druid returned 0 results for interval {}",
+                get_interval(now)
+            );
+        }
         for result in results {
             info!("processing timeseries result: {}", result);
             let mut resource_metrics = IntersightResourceMetrics::default();
 
             if let Value::Object(event) = &result["event"] {
-                // Apply dimension to attribute mapping
                 let attributes: BTreeMap<String, String> = BTreeMap::new();
                 if let Some(otel_dimension_to_attribute_map) =
                     &config.otel_dimension_to_attribute_map
@@ -58,33 +63,64 @@ pub async fn poll(client: &Client, config: &TSPollerConfig) -> Result<Intersight
                 }
 
                 for field_name in config.field_names.as_slice() {
-                    if let Some(Value::Number(value)) = event.get(field_name) {
-                        let f64value: f64;
-                        if let Some(value) = value.as_f64() {
-                            f64value = value;
-                        } else if let Some(value) = value.as_i64() {
-                            f64value = value as f64;
-                        } else {
+                    let f64value = match event.get(field_name) {
+                        None => {
+                            warn!("Field '{}' not found in Druid event, skipping", field_name);
                             continue;
                         }
+                        Some(Value::Null) => {
+                            debug!(
+                                "Field '{}' is null in Druid result (possible division-by-zero \
+                                in post-aggregation), skipping",
+                                field_name
+                            );
+                            continue;
+                        }
+                        Some(Value::Number(n)) => {
+                            if let Some(v) = n.as_f64() {
+                                v
+                            } else if let Some(v) = n.as_i64() {
+                                v as f64
+                            } else {
+                                warn!(
+                                    "Field '{}' has unsupported numeric type, skipping",
+                                    field_name
+                                );
+                                continue;
+                            }
+                        }
+                        Some(other) => {
+                            warn!(
+                                "Field '{}' has unexpected non-numeric type in Druid result, skipping: {}",
+                                field_name, other
+                            );
+                            continue;
+                        }
+                    };
 
-                        let mut metric = IntersightMetric::new(
-                            field_name,
-                            f64value,
-                            Some(attributes.clone()),
-                            start_time.into(),
-                            end_time.into(),
-                        );
+                    let mut metric = IntersightMetric::new(
+                        field_name,
+                        f64value,
+                        Some(attributes.clone()),
+                        start_time.into(),
+                        end_time.into(),
+                    );
 
-                        metric.timestamp_offset = 15 * 60;
+                    metric.timestamp_offset = 15 * 60;
 
-                        resource_metrics.metrics.push(metric);
-                    }
+                    resource_metrics.metrics.push(metric);
                 }
 
                 ret.push(resource_metrics);
+            } else {
+                warn!("Druid result has no 'event' object, skipping: {}", result);
             }
         }
+    } else {
+        warn!(
+            "Druid response was not a JSON array — possible API error or unexpected format \
+            (full response logged above at info level)"
+        );
     }
 
     Ok(ret)

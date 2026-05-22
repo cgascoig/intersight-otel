@@ -50,6 +50,8 @@ async fn main() -> Result<()> {
         &client,
     );
 
+    let mut poller_handles: Vec<tokio::task::JoinHandle<()>> = vec![];
+
     // Start all the pollers based on the config file(s)
     if let Some(poller_configs) = config.pollers {
         for poller_config in poller_configs {
@@ -57,12 +59,13 @@ async fn main() -> Result<()> {
                 poller_config.enrichers.as_deref().unwrap_or_default(),
                 &enricher_map,
             );
-            intersight_poller::start_intersight_poller(
+            let handle = intersight_poller::start_intersight_poller(
                 metric_chan_tx.clone(),
                 &client,
                 &poller_config,
                 enrichers,
             )?;
+            poller_handles.push(handle);
         }
     }
 
@@ -73,13 +76,25 @@ async fn main() -> Result<()> {
                 tspoller_config.enrichers.as_deref().unwrap_or_default(),
                 &enricher_map,
             );
-            intersight_poller::start_intersight_tspoller(
+            let handle = intersight_poller::start_intersight_tspoller(
                 metric_chan_tx.clone(),
                 &client,
                 &tspoller_config,
                 enrichers,
             )?;
+            poller_handles.push(handle);
         }
+    }
+
+    // Supervise poller tasks — they should never exit. If one does (panic or bug),
+    // log loudly so the silent metric gap doesn't go unnoticed.
+    for handle in poller_handles {
+        tokio::spawn(async move {
+            match handle.await {
+                Ok(()) => error!("Poller task exited unexpectedly — no further metrics from this poller"),
+                Err(e) => error!("Poller task panicked: {} — no further metrics from this poller", e),
+            }
+        });
     }
 
     // Keep running until the metric_merger finishes (i.e. never)

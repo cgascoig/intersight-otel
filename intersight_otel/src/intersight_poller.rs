@@ -8,6 +8,8 @@ use intersight_api::Client;
 use opentelemetry_proto::tonic::common::v1::{any_value, AnyValue, KeyValue};
 use tokio::{sync::mpsc::Sender, task::JoinHandle, time};
 
+const ENRICH_TIMEOUT_SECS: u64 = 60;
+
 use crate::attribute_enricher::AttributeEnricher;
 use crate::config::{OTelAttributeProvider, PollerConfig, TSPollerConfig};
 
@@ -91,8 +93,32 @@ pub fn start_intersight_poller(
 
             if let Ok(mut r) = poll_result {
                 add_otel_attributes(&mut r, &config);
-                for enricher in &enrichers {
-                    enricher.enrich_batch(&mut r).await;
+                if !enrichers.is_empty() {
+                    let enrich_result = time::timeout(
+                        time::Duration::from_secs(ENRICH_TIMEOUT_SECS),
+                        async {
+                            for enricher in &enrichers {
+                                enricher.enrich_batch(&mut r).await;
+                            }
+                        },
+                    )
+                    .await;
+                    if enrich_result.is_err() {
+                        warn!(
+                            "Poller '{}': enrichment timed out after {}s, sending batch un-enriched",
+                            config.name, ENRICH_TIMEOUT_SECS
+                        );
+                    }
+                }
+                let metric_count: usize = r.iter().map(|rm| rm.metrics.len()).sum();
+                let resource_count = r.len();
+                if resource_count == 0 {
+                    warn!("Poller '{}': poll returned empty batch this tick", config.name);
+                } else {
+                    debug!(
+                        "Poller '{}': sending {} resources, {} metrics",
+                        config.name, resource_count, metric_count
+                    );
                 }
                 add_start_time(&mut r, start_time);
                 if let Err(err) = tx.send(r).await {
@@ -127,8 +153,32 @@ pub fn start_intersight_tspoller(
 
             if let Ok(mut r) = poll_result {
                 add_otel_attributes(&mut r, &config);
-                for enricher in &enrichers {
-                    enricher.enrich_batch(&mut r).await;
+                if !enrichers.is_empty() {
+                    let enrich_result = time::timeout(
+                        time::Duration::from_secs(ENRICH_TIMEOUT_SECS),
+                        async {
+                            for enricher in &enrichers {
+                                enricher.enrich_batch(&mut r).await;
+                            }
+                        },
+                    )
+                    .await;
+                    if enrich_result.is_err() {
+                        warn!(
+                            "TSPoller '{}': enrichment timed out after {}s, sending batch un-enriched",
+                            config.name, ENRICH_TIMEOUT_SECS
+                        );
+                    }
+                }
+                let metric_count: usize = r.iter().map(|rm| rm.metrics.len()).sum();
+                let resource_count = r.len();
+                if resource_count == 0 {
+                    warn!("TSPoller '{}': poll returned empty batch this tick", config.name);
+                } else {
+                    debug!(
+                        "TSPoller '{}': sending {} resources, {} metrics",
+                        config.name, resource_count, metric_count
+                    );
                 }
                 add_start_time(&mut r, start_time);
                 if let Err(err) = tx.send(r).await {
