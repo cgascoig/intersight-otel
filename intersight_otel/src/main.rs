@@ -91,8 +91,13 @@ async fn main() -> Result<()> {
     for handle in poller_handles {
         tokio::spawn(async move {
             match handle.await {
-                Ok(()) => error!("Poller task exited unexpectedly — no further metrics from this poller"),
-                Err(e) => error!("Poller task panicked: {} — no further metrics from this poller", e),
+                Ok(()) => {
+                    error!("Poller task exited unexpectedly — no further metrics from this poller")
+                }
+                Err(e) => error!(
+                    "Poller task panicked: {} — no further metrics from this poller",
+                    e
+                ),
             }
         });
     }

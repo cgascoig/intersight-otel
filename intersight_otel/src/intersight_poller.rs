@@ -94,15 +94,13 @@ pub fn start_intersight_poller(
             if let Ok(mut r) = poll_result {
                 add_otel_attributes(&mut r, &config);
                 if !enrichers.is_empty() {
-                    let enrich_result = time::timeout(
-                        time::Duration::from_secs(ENRICH_TIMEOUT_SECS),
-                        async {
+                    let enrich_result =
+                        time::timeout(time::Duration::from_secs(ENRICH_TIMEOUT_SECS), async {
                             for enricher in &enrichers {
                                 enricher.enrich_batch(&mut r).await;
                             }
-                        },
-                    )
-                    .await;
+                        })
+                        .await;
                     if enrich_result.is_err() {
                         warn!(
                             "Poller '{}': enrichment timed out after {}s, sending batch un-enriched",
@@ -113,7 +111,10 @@ pub fn start_intersight_poller(
                 let metric_count: usize = r.iter().map(|rm| rm.metrics.len()).sum();
                 let resource_count = r.len();
                 if resource_count == 0 {
-                    warn!("Poller '{}': poll returned empty batch this tick", config.name);
+                    warn!(
+                        "Poller '{}': poll returned empty batch this tick",
+                        config.name
+                    );
                 } else {
                     debug!(
                         "Poller '{}': sending {} resources, {} metrics",
@@ -154,15 +155,13 @@ pub fn start_intersight_tspoller(
             if let Ok(mut r) = poll_result {
                 add_otel_attributes(&mut r, &config);
                 if !enrichers.is_empty() {
-                    let enrich_result = time::timeout(
-                        time::Duration::from_secs(ENRICH_TIMEOUT_SECS),
-                        async {
+                    let enrich_result =
+                        time::timeout(time::Duration::from_secs(ENRICH_TIMEOUT_SECS), async {
                             for enricher in &enrichers {
                                 enricher.enrich_batch(&mut r).await;
                             }
-                        },
-                    )
-                    .await;
+                        })
+                        .await;
                     if enrich_result.is_err() {
                         warn!(
                             "TSPoller '{}': enrichment timed out after {}s, sending batch un-enriched",
@@ -173,7 +172,10 @@ pub fn start_intersight_tspoller(
                 let metric_count: usize = r.iter().map(|rm| rm.metrics.len()).sum();
                 let resource_count = r.len();
                 if resource_count == 0 {
-                    warn!("TSPoller '{}': poll returned empty batch this tick", config.name);
+                    warn!(
+                        "TSPoller '{}': poll returned empty batch this tick",
+                        config.name
+                    );
                 } else {
                     debug!(
                         "TSPoller '{}': sending {} resources, {} metrics",
@@ -201,6 +203,7 @@ fn add_otel_attributes(batch: &mut IntersightMetricBatch, config: &impl OTelAttr
                 value: Some(AnyValue {
                     value: Some(any_value::Value::StringValue(v)),
                 }),
+                key_strindex: 0,
             })
         }
     }
@@ -209,5 +212,96 @@ fn add_otel_attributes(batch: &mut IntersightMetricBatch, config: &impl OTelAttr
 fn add_start_time(batch: &mut IntersightMetricBatch, start_time: SystemTime) {
     for metrics in batch {
         metrics.start_time = Some(start_time);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn poller_config(aggregator: &str) -> PollerConfig {
+        serde_json::from_value(json!({
+            "api_query": "api/v1/example",
+            "aggregator": aggregator,
+            "name": "example.metric",
+            "otel_attributes": {
+                "environment": "test",
+                "site": "lab"
+            }
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn selects_result_count_aggregator() {
+        let aggregator = get_aggregator_for_config(&poller_config("result_count")).unwrap();
+        let batch = aggregator.aggregate(json!({ "Count": 7 }));
+
+        assert_eq!(batch[0].metrics[0].name, "example.metric");
+        assert_eq!(batch[0].metrics[0].value, 7.0);
+    }
+
+    #[test]
+    fn selects_count_results_aggregator() {
+        let aggregator = get_aggregator_for_config(&poller_config("count_results")).unwrap();
+        let batch = aggregator.aggregate(json!({ "Results": [{}, {}] }));
+
+        assert_eq!(batch[0].metrics[0].name, "example.metric");
+        assert_eq!(batch[0].metrics[0].value, 2.0);
+    }
+
+    #[test]
+    fn rejects_unknown_aggregator() {
+        let error = get_aggregator_for_config(&poller_config("unknown"))
+            .err()
+            .unwrap();
+
+        assert_eq!(error.to_string(), "Invalid aggregator unknown");
+    }
+
+    #[test]
+    fn adds_static_attributes_to_every_resource() {
+        let mut batch = vec![
+            IntersightResourceMetrics::default(),
+            IntersightResourceMetrics::default(),
+        ];
+
+        add_otel_attributes(&mut batch, &poller_config("result_count"));
+
+        for resource in batch {
+            assert_eq!(resource.attributes.len(), 2);
+            let attributes: BTreeMap<_, _> = resource
+                .attributes
+                .into_iter()
+                .map(|attribute| {
+                    let value = match attribute.value.unwrap().value.unwrap() {
+                        any_value::Value::StringValue(value) => value,
+                        value => panic!("unexpected attribute value: {value:?}"),
+                    };
+                    (attribute.key, value)
+                })
+                .collect();
+            assert_eq!(
+                attributes.get("environment").map(String::as_str),
+                Some("test")
+            );
+            assert_eq!(attributes.get("site").map(String::as_str), Some("lab"));
+        }
+    }
+
+    #[test]
+    fn adds_start_time_to_every_resource() {
+        let mut batch = vec![
+            IntersightResourceMetrics::default(),
+            IntersightResourceMetrics::default(),
+        ];
+        let start_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(123);
+
+        add_start_time(&mut batch, start_time);
+
+        assert!(batch
+            .iter()
+            .all(|resource| resource.start_time == Some(start_time)));
     }
 }

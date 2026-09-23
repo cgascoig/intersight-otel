@@ -97,6 +97,7 @@ impl AttributeEnricher {
                         value: Some(AnyValue {
                             value: Some(any_value::Value::StringValue(attr_val)),
                         }),
+                        key_strindex: 0,
                     });
                 }
                 enriched += 1;
@@ -125,8 +126,7 @@ impl AttributeEnricher {
 
         let result = self.do_lookup(source_value).await;
 
-        let expires_at =
-            Instant::now() + Duration::from_secs(CACHE_TTL_SECS + jitter_secs());
+        let expires_at = Instant::now() + Duration::from_secs(CACHE_TTL_SECS + jitter_secs());
         let mut cache = self.cache.lock().await;
         cache.insert(
             source_value.to_string(),
@@ -223,6 +223,7 @@ pub fn resolve_enrichers(
 mod tests {
     use super::*;
     use crate::config::ResultMappingConfig;
+    use crate::intersight_poller::IntersightResourceMetrics;
     use serde_json::json;
 
     // Inline test PEM key (same as used in intersight_api tests)
@@ -265,20 +266,45 @@ pQ8EfDaxnEFVuY7Xa8i/qr7mmXo5E+d0TrxkB1bqtwaJJ8ojaW5G/PIkU3aTC6uV
             .expect("failed to build test client")
     }
 
+    fn make_config(name: &str) -> AttributeEnricherConfig {
+        AttributeEnricherConfig {
+            name: name.to_string(),
+            source_attribute: "some.attribute".to_string(),
+            source_value_regex: None,
+            query_template: "api/v1/thing/{value}".to_string(),
+            result_mappings: vec![ResultMappingConfig {
+                result_field: "$.Name".to_string(),
+                result_attribute: "thing.name".to_string(),
+            }],
+        }
+    }
+
     fn make_enricher(name: &str) -> Arc<AttributeEnricher> {
-        Arc::new(AttributeEnricher::new(
-            AttributeEnricherConfig {
-                name: name.to_string(),
-                source_attribute: "some.attribute".to_string(),
-                source_value_regex: None,
-                query_template: "api/v1/thing/{value}".to_string(),
-                result_mappings: vec![ResultMappingConfig {
-                    result_field: "Name".to_string(),
-                    result_attribute: "thing.name".to_string(),
-                }],
-            },
-            test_client(),
-        ))
+        Arc::new(AttributeEnricher::new(make_config(name), test_client()))
+    }
+
+    fn string_attribute(key: &str, value: &str) -> KeyValue {
+        KeyValue {
+            key: key.to_string(),
+            value: Some(AnyValue {
+                value: Some(any_value::Value::StringValue(value.to_string())),
+            }),
+            key_strindex: 0,
+        }
+    }
+
+    fn attribute_value<'a>(resource: &'a IntersightResourceMetrics, key: &str) -> Option<&'a str> {
+        resource.attributes.iter().find_map(|kv| {
+            if kv.key != key {
+                return None;
+            }
+            match &kv.value {
+                Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(value)),
+                }) => Some(value.as_str()),
+                _ => None,
+            }
+        })
     }
 
     // --- extract_field tests ---
@@ -328,6 +354,192 @@ pQ8EfDaxnEFVuY7Xa8i/qr7mmXo5E+d0TrxkB1bqtwaJJ8ojaW5G/PIkU3aTC6uV
         assert_eq!(extract_field(&response, "$.Nested.DoesNotExist"), None);
     }
 
+    #[test]
+    fn test_extract_field_converts_json_scalar_values() {
+        let response = json!({"Enabled": true, "Nothing": null});
+        assert_eq!(
+            extract_field(&response, "$.Enabled"),
+            Some("true".to_string())
+        );
+        assert_eq!(
+            extract_field(&response, "$.Nothing"),
+            Some("null".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_field_serializes_array_and_object_values() {
+        let response = json!({"Items": [1, "two"], "Details": {"Name": "thing"}});
+        assert_eq!(
+            extract_field(&response, "$.Items"),
+            Some(r#"[1,"two"]"#.to_string())
+        );
+        assert_eq!(
+            extract_field(&response, "$.Details"),
+            Some(r#"{"Name":"thing"}"#.to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_field_returns_first_json_path_match() {
+        let response = json!({"Items": [{"Name": "first"}, {"Name": "second"}]});
+        assert_eq!(
+            extract_field(&response, "$.Items[*].Name"),
+            Some("first".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_field_invalid_json_path() {
+        let response = json!({"Name": "thing"});
+        assert_eq!(extract_field(&response, "$["), None);
+    }
+
+    // --- enrich_batch tests ---
+
+    #[tokio::test]
+    async fn test_enrich_batch_skips_missing_source_attribute_without_lookup() {
+        let enricher = make_enricher("missing-source");
+        let mut batch = vec![IntersightResourceMetrics {
+            attributes: vec![string_attribute("other.attribute", "value")],
+            ..Default::default()
+        }];
+
+        enricher.enrich_batch(&mut batch).await;
+
+        assert_eq!(batch[0].attributes.len(), 1);
+        assert!(enricher.cache.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_enrich_batch_skips_non_string_source_without_lookup() {
+        let enricher = make_enricher("non-string-source");
+        let mut batch = vec![IntersightResourceMetrics {
+            attributes: vec![KeyValue {
+                key: "some.attribute".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::IntValue(42)),
+                }),
+                key_strindex: 0,
+            }],
+            ..Default::default()
+        }];
+
+        enricher.enrich_batch(&mut batch).await;
+
+        assert_eq!(batch[0].attributes.len(), 1);
+        assert!(enricher.cache.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_enrich_batch_skips_regex_non_match_without_lookup() {
+        let mut config = make_config("regex-non-match");
+        config.source_value_regex = Some(r"^moid:(\d+)$".to_string());
+        let enricher = AttributeEnricher::new(config, test_client());
+        let mut batch = vec![IntersightResourceMetrics {
+            attributes: vec![string_attribute("some.attribute", "not-a-moid")],
+            ..Default::default()
+        }];
+
+        enricher.enrich_batch(&mut batch).await;
+
+        assert_eq!(batch[0].attributes.len(), 1);
+        assert!(enricher.cache.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_enrich_batch_uses_regex_capture_as_cache_key() {
+        let mut config = make_config("regex-cache-key");
+        config.source_value_regex = Some(r"^moid:(\d+)$".to_string());
+        let enricher = AttributeEnricher::new(config, test_client());
+        enricher.cache.lock().await.insert(
+            "123".to_string(),
+            CacheEntry {
+                value: Some(HashMap::from([(
+                    "thing.name".to_string(),
+                    "cached-name".to_string(),
+                )])),
+                expires_at: Instant::now() + Duration::from_secs(60),
+            },
+        );
+        let mut batch = vec![IntersightResourceMetrics {
+            attributes: vec![string_attribute("some.attribute", "moid:123")],
+            ..Default::default()
+        }];
+
+        enricher.enrich_batch(&mut batch).await;
+
+        assert_eq!(
+            attribute_value(&batch[0], "thing.name"),
+            Some("cached-name")
+        );
+        assert_eq!(enricher.cache.lock().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_enrich_batch_repeated_positive_cache_hits_enrich_each_batch() {
+        let enricher = make_enricher("positive-cache-hit");
+        enricher.cache.lock().await.insert(
+            "source-1".to_string(),
+            CacheEntry {
+                value: Some(HashMap::from([(
+                    "thing.name".to_string(),
+                    "cached-name".to_string(),
+                )])),
+                expires_at: Instant::now() + Duration::from_secs(60),
+            },
+        );
+        let mut first_batch = vec![IntersightResourceMetrics {
+            attributes: vec![string_attribute("some.attribute", "source-1")],
+            ..Default::default()
+        }];
+        let mut second_batch = vec![IntersightResourceMetrics {
+            attributes: vec![string_attribute("some.attribute", "source-1")],
+            ..Default::default()
+        }];
+
+        enricher.enrich_batch(&mut first_batch).await;
+        enricher.enrich_batch(&mut second_batch).await;
+
+        assert_eq!(
+            attribute_value(&first_batch[0], "thing.name"),
+            Some("cached-name")
+        );
+        assert_eq!(
+            attribute_value(&second_batch[0], "thing.name"),
+            Some("cached-name")
+        );
+        let cache = enricher.cache.lock().await;
+        assert_eq!(cache.len(), 1);
+        assert_eq!(
+            cache["source-1"].value.as_ref().unwrap()["thing.name"],
+            "cached-name"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_enrich_batch_negative_cache_hit_skips_without_lookup() {
+        let enricher = make_enricher("negative-cache-hit");
+        enricher.cache.lock().await.insert(
+            "missing".to_string(),
+            CacheEntry {
+                value: None,
+                expires_at: Instant::now() + Duration::from_secs(60),
+            },
+        );
+        let mut batch = vec![IntersightResourceMetrics {
+            attributes: vec![string_attribute("some.attribute", "missing")],
+            ..Default::default()
+        }];
+
+        enricher.enrich_batch(&mut batch).await;
+
+        assert_eq!(batch[0].attributes.len(), 1);
+        let cache = enricher.cache.lock().await;
+        assert_eq!(cache.len(), 1);
+        assert!(cache["missing"].value.is_none());
+    }
+
     // --- resolve_enrichers tests ---
 
     #[test]
@@ -369,6 +581,20 @@ pQ8EfDaxnEFVuY7Xa8i/qr7mmXo5E+d0TrxkB1bqtwaJJ8ojaW5G/PIkU3aTC6uV
         assert!(resolved.is_empty());
     }
 
+    #[test]
+    fn test_resolve_enrichers_preserves_request_order_and_duplicates() {
+        let mut map = HashMap::new();
+        map.insert("alpha".to_string(), make_enricher("alpha"));
+        map.insert("beta".to_string(), make_enricher("beta"));
+
+        let names = vec!["beta".to_string(), "alpha".to_string(), "beta".to_string()];
+        let resolved = resolve_enrichers(&names, &map);
+        let resolved_names: Vec<_> = resolved.iter().map(|e| e.config.name.as_str()).collect();
+
+        assert_eq!(resolved_names, ["beta", "alpha", "beta"]);
+        assert!(Arc::ptr_eq(&resolved[0], &resolved[2]));
+    }
+
     // --- build_enricher_map tests ---
 
     #[test]
@@ -403,6 +629,19 @@ pQ8EfDaxnEFVuY7Xa8i/qr7mmXo5E+d0TrxkB1bqtwaJJ8ojaW5G/PIkU3aTC6uV
         assert!(map.is_empty());
     }
 
+    #[test]
+    fn test_build_enricher_map_duplicate_name_uses_last_config() {
+        let mut first = make_config("duplicate");
+        first.source_attribute = "first.attribute".to_string();
+        let mut second = make_config("duplicate");
+        second.source_attribute = "second.attribute".to_string();
+
+        let map = build_enricher_map(&[first, second], &test_client());
+
+        assert_eq!(map.len(), 1);
+        assert_eq!(map["duplicate"].config.source_attribute, "second.attribute");
+    }
+
     // --- apply_regex tests ---
 
     #[test]
@@ -430,5 +669,29 @@ pQ8EfDaxnEFVuY7Xa8i/qr7mmXo5E+d0TrxkB1bqtwaJJ8ojaW5G/PIkU3aTC6uV
             apply_regex("/api/v1/compute/Blades/651a30d276752d35013bc045", &re),
             Some("651a30d276752d35013bc045".to_string())
         );
+    }
+
+    #[test]
+    fn test_apply_regex_uses_first_capture_group_when_multiple_exist() {
+        let re = regex::Regex::new(r"(first)-(second)").unwrap();
+        assert_eq!(
+            apply_regex("prefix first-second suffix", &re),
+            Some("first".to_string())
+        );
+    }
+
+    #[test]
+    fn test_apply_regex_falls_back_to_full_match_when_optional_capture_is_absent() {
+        let re = regex::Regex::new(r"(?:prefix-)?(\d+)?value").unwrap();
+        assert_eq!(
+            apply_regex("prefix-value", &re),
+            Some("prefix-value".to_string())
+        );
+    }
+
+    #[test]
+    fn test_apply_regex_preserves_empty_capture() {
+        let re = regex::Regex::new(r"^(.*)$").unwrap();
+        assert_eq!(apply_regex("", &re), Some(String::new()));
     }
 }

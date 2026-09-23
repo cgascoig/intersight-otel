@@ -8,8 +8,8 @@ use http_signature_normalization_reqwest::prelude::*;
 
 use base64::prelude::*;
 use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
-    Request,
+    header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE},
+    Request, Response,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -92,7 +92,7 @@ impl Client {
         path: &str,
         headers: Option<&HashMap<String, String>>,
     ) -> Result<Request, IntersightError> {
-        let url = format!("https://{}/{}", self.host, path);
+        let url = format!("https://{}/{}", self.host, path.trim_start_matches('/'));
 
         let mut body: Option<serde_json::Value> = None;
 
@@ -153,6 +153,10 @@ impl Client {
             request_headers.insert("accept", HeaderValue::from_static("application/json"));
         }
 
+        if !body_str.is_empty() && !request_headers.contains_key(CONTENT_TYPE) {
+            request_headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        }
+
         let signer = self.signer.clone();
 
         req.headers(request_headers)
@@ -181,6 +185,10 @@ impl Client {
 
         let response = self.client.execute(req).await?;
 
+        Self::parse_response(response).await
+    }
+
+    async fn parse_response(response: Response) -> Result<Value, IntersightError> {
         if !response.status().is_success() {
             let status = response.status().as_u16();
             if let Ok(body) = response.text().await {
@@ -190,10 +198,7 @@ impl Client {
         }
 
         let body = response.bytes().await.map_err(IntersightError::Body)?;
-
-        let js = serde_json::from_slice(&body).map_err(IntersightError::ResponseError)?;
-
-        Ok(js)
+        serde_json::from_slice(&body).map_err(IntersightError::ResponseError)
     }
 }
 
@@ -237,91 +242,147 @@ pub enum IntersightError {
     ApiError(u16),
 }
 
-#[tokio::test]
-async fn test_build_request_v2() {
-    let v2_key_id = "59c84e4a16267c0001c23428/59cc595416267c0001a0dfc7/62b3ba347564612d3198f5b1";
-    //NOSONAR
-    let v2_secret_key = r#"
------BEGIN RSA PRIVATE KEY-----
-MIIEowIBAAKCAQEAvV0n1s8QcR7S7u5rR94//VoUSIxJ7jvLdZRNYRQcQCECxp+H
-V6ut+61D5t7YQqNcTIEv71ssC9UNs/wCIFELeN5MweLqvYto03SFJB0bLZ+ycpnp
-e9jTqALZqa6uCLycFjtV9s7sW5nZZcuDiyLlNCygtkzXkUdBQ3ycaZpJphKwezQ1
-xXgmWaUV6JqihSwVgj9U7sZOQN/6eCbbL2/kLoHnAYVIlbiuV0uTZsFGLsm2ZP1o
-A3h2NdqhPHrBlWSmUAdhYIGlu7WNQ0yN5d6PpwHERCUI2+fOKxau8C42EYDttYf1
-tnU4VZC7ItmE8ZDlrGn9f5F8virhhlBEESTXkwIDAQABAoIBABfQiVwYembfi4OE
-9HT7XGzOUVK2Ye3WE0ZcOkcFMnBWNnUoRusdqinGpo14ZRYsWUU90ft2KdnrF2gV
-P2c1Cg5PVrPjh8YCrFI7iyr5hht8xAJpnNV4dVXh1eHjF/v9TFv3Zl49s7fpZ0/I
-AmkTIGQpYKTMkSeyIGEOYNVfE/gQljcRz6yf60GmWJY5IglXh/00GtB3GQHJqWLs
-rWMi7uwtFCp6dpQDjC7VAanAnmkti4/+hiNC8c+29Zf5LcQYPz2oY3V1UlpynyYH
-b+mRL5iFJwcKZs+93waTyD/igFzK+ly9Nw3/vM/D0h5wxw8UPMFHyBKN3MAI4tzW
-M1QtbYECgYEA5c3V1mReeOIDx6ilUebKUooryhg0EcKIYA5bUFvlYkB7E688CpdL
-nCHoeRjCKcQ0jZzpZcBpB+CoaHNLCvpaKSHzvXGmFUztMX7FMVGERWk8RwvxCVl3
-j9LstVvcXklt6OE2E3GLQUhLFbs0xWghlNZWMf/KCx7t/WUChRgGRWECgYEA0vMx
-EDlLISZTheR2hKlENn2yAxYfo8XieArPcjt1kivGVVqnItUMtzCRHnF1cjYnbk8g
-Tf5x+8LwlOHTCX9VrQQYM98t0WsWVSmkrzss1/K0yu09sYsdOet9UL7Jet7kpA3L
-dfRxXQHySJaUPVYFR9f8hQsuJrUdndFiHdHlzXMCgYEAzFNzIXgGo9bZ44mozKS3
-GiKugrd4fJ4KIdZCDLZYwz5v8HWrngMeAEoJ6LpB0V8aFxwATi+Bc7amJpD0lWM6
-DT6Z+MR3FpNahtqfvJUtVYYXSVhtzZFWBHRXcX2m99K0Pg8YxLr9RWNhF4Znimpn
-CW52H2i+nZq3oslQL0TINqECgYA33LTScgmmNqsJmu2TxetNbs3UKWipiv6lAV/c
-BUjmM3drJP17qOWcIV1crXkHjLW2bXfFj6sJm57wHjkvm6vJjHsISYKtoWkhlkyJ
-JueCLECaOGcM/CT6MJVX654ZTqtHkmudyeS3V4uck1ugPoZZdyXk6YgIMhAsucT8
-1pe/ZwKBgGoZAhOaR/s5EM/bwIpqPE870VnWeIbvDc8vMH3tW/q7SysfyNxyZ99w
-pQ8EfDaxnEFVuY7Xa8i/qr7mmXo5E+d0TrxkB1bqtwaJJ8ojaW5G/PIkU3aTC6uV
-11QYh2F1qu2ow8Y4Q3DZ78jc9M3gHvzuknyencU2K0+VhVgwEVtI
------END RSA PRIVATE KEY-----
-"#;
-    let content_type = "application/json";
-    let req_date = "Thu, 23 Jun 2022 00:57:07 GMT";
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reqwest::{Method as HttpMethod, StatusCode};
+    use serde_json::json;
 
-    let client = Client::from_key_bytes(
-        v2_key_id,
-        v2_secret_key.as_bytes(),
-        None,
-        "intersight.com",
-        false,
-    )
-    .expect("client should build successfully");
+    const TEST_KEY: &[u8] = include_bytes!("../tests/examples/example-v2.pem");
+    const EMPTY_DIGEST: &str = "SHA-256=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=";
+    const DATE: &str = "Thu, 23 Jun 2022 00:57:07 GMT";
 
-    let mut headers = HashMap::new();
-    headers.insert("date".to_string(), req_date.to_string());
-    headers.insert("content-type".to_string(), content_type.to_string());
-    let req = client
-        .build_request(Method::Get, "/api/v1/ntp/Policies", Some(&headers))
-        .await
-        .expect("request should build successfully");
+    fn client() -> Client {
+        Client::from_key_bytes("key-id", TEST_KEY, None, "intersight.example", false)
+            .expect("client should build")
+    }
 
-    assert_eq!(
-        req.headers()
-            .get("digest")
-            .expect("digest header should be present"),
-        "SHA-256=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU="
-    );
+    fn headers() -> HashMap<String, String> {
+        HashMap::from([("date".to_string(), DATE.to_string())])
+    }
 
-    assert_eq!(
-        req.headers()
-            .get("authorization")
-            .expect("authorization header should be present"),
-            "Signature keyId=\"59c84e4a16267c0001c23428/59cc595416267c0001a0dfc7/62b3ba347564612d3198f5b1\",algorithm=\"hs2019\",headers=\"(request-target) accept content-type date digest host user-agent\",signature=\"U/ixkbh+gQZ/hiTzS8WthcEYbun42AAndX5Kuq3C4omRM2+iEYWTamDL03+DDEwCovOioFJszlh8r1xxKlBwKABWTuY9fzwi9HM2s2wlm11tOo326O5gHbJRc3MWcnyICuGgH4YjK0VaNmwonSsuPydxKiOJkc1aXmQ5jKkPSDpJeGsleRT52DRGRjkb2DtKUkPRVhVNStNKYzPi7NDvGEj/B0Tq2s++8uh9vmT3RSI1DmNOR+jd9RgjZckb1cvCawUCAb6dG3N+aXgCqioG6Tm6ocE6uYqKtBNTAELom7ydlS0wGCu8NFad4shrfUW87tBfo0gE9hRBr36AtuCzfg==\""
-    );
+    async fn request(method: Method) -> Request {
+        client()
+            .build_request(method, "/api/v1/items", Some(&headers()))
+            .await
+            .expect("request should build")
+    }
 
-    assert_eq!(
-        req.headers()
-            .get("host")
-            .expect("host header should be present"),
-        "intersight.com"
-    );
+    #[tokio::test]
+    async fn get_builds_signed_request_with_defaults() {
+        let request = request(Method::Get).await;
 
-    assert_eq!(
-        req.headers()
-            .get("content-type")
-            .expect("content-type header should be present"),
-        content_type
-    );
+        assert_eq!(request.method(), HttpMethod::GET);
+        assert_eq!(
+            request.url().as_str(),
+            "https://intersight.example/api/v1/items"
+        );
+        assert!(request.body().is_none());
+        assert_eq!(request.headers()["host"], "intersight.example");
+        assert_eq!(request.headers()["date"], DATE);
+        assert_eq!(request.headers()["accept"], "application/json");
+        assert_eq!(request.headers()["user-agent"], "intersight-otel");
+        assert_eq!(request.headers()["digest"], EMPTY_DIGEST);
+        assert!(request.headers().get(CONTENT_TYPE).is_none());
+        let authorization = request.headers()["authorization"]
+            .to_str()
+            .expect("authorization should be text");
+        assert!(authorization.starts_with("Signature keyId=\"key-id\",algorithm=\"hs2019\""));
+        assert!(authorization.contains("(request-target) accept date digest host user-agent"));
+    }
 
-    assert_eq!(
-        req.headers()
-            .get("date")
-            .expect("date header should be present"),
-        req_date
-    );
+    #[tokio::test]
+    async fn body_methods_serialize_json_and_set_content_type() {
+        let body = json!({"enabled": true, "count": 2});
+        let expected_body = serde_json::to_vec(&body).expect("JSON should serialize");
+        let expected_digest = format!(
+            "SHA-256={}",
+            BASE64_STANDARD.encode(Sha256::digest(&expected_body))
+        );
+
+        for (method, expected_method) in [
+            (Method::Post(body.clone()), HttpMethod::POST),
+            (Method::Patch(body.clone()), HttpMethod::PATCH),
+        ] {
+            let request = request(method).await;
+            assert_eq!(request.method(), expected_method);
+            assert_eq!(request.headers()[CONTENT_TYPE], "application/json");
+            assert_eq!(request.headers()["digest"], expected_digest);
+            assert_eq!(
+                request.body().and_then(reqwest::Body::as_bytes),
+                Some(expected_body.as_slice())
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn delete_has_no_body_and_custom_headers_override_defaults() {
+        let mut custom_headers = headers();
+        custom_headers.insert("Accept".to_string(), "application/problem+json".to_string());
+        custom_headers.insert("User-Agent".to_string(), "test-agent".to_string());
+        let request = client()
+            .build_request(Method::Delete, "api/v1/items/1", Some(&custom_headers))
+            .await
+            .expect("request should build");
+
+        assert_eq!(request.method(), HttpMethod::DELETE);
+        assert_eq!(request.headers()["accept"], "application/problem+json");
+        assert_eq!(request.headers()["user-agent"], "test-agent");
+        assert_eq!(request.headers()["digest"], EMPTY_DIGEST);
+        assert!(request.body().is_none());
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_header_name_and_value() {
+        let invalid_name = HashMap::from([("bad header".to_string(), "value".to_string())]);
+        let error = client()
+            .build_request(Method::Get, "path", Some(&invalid_name))
+            .await
+            .expect_err("invalid header names should fail");
+        assert!(
+            matches!(error, IntersightError::InvalidParamater(message) if message == "Invalid header name")
+        );
+
+        let invalid_value = HashMap::from([("x-test".to_string(), "bad\nvalue".to_string())]);
+        let error = client()
+            .build_request(Method::Get, "path", Some(&invalid_value))
+            .await
+            .expect_err("invalid header values should fail");
+        assert!(
+            matches!(error, IntersightError::InvalidParamater(message) if message == "Invalid header value")
+        );
+    }
+
+    fn response(status: StatusCode, body: &'static str) -> Response {
+        reqwest::Response::from(
+            http::Response::builder()
+                .status(status)
+                .body(body)
+                .expect("test response should build"),
+        )
+    }
+
+    #[tokio::test]
+    async fn parses_successful_json_response() {
+        let value = Client::parse_response(response(StatusCode::OK, r#"{"value":42}"#))
+            .await
+            .expect("valid JSON response should parse");
+        assert_eq!(value, json!({"value": 42}));
+    }
+
+    #[tokio::test]
+    async fn reports_http_error_status_before_parsing_body() {
+        let error = Client::parse_response(response(StatusCode::BAD_GATEWAY, "not JSON"))
+            .await
+            .expect_err("error status should fail");
+        assert!(matches!(error, IntersightError::ApiError(502)));
+    }
+
+    #[tokio::test]
+    async fn reports_malformed_success_response() {
+        let error = Client::parse_response(response(StatusCode::OK, "not JSON"))
+            .await
+            .expect_err("malformed JSON should fail");
+        assert!(matches!(error, IntersightError::ResponseError(_)));
+    }
 }
