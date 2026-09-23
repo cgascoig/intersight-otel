@@ -70,7 +70,7 @@ pub struct PollerConfig {
 
 impl PollerConfig {
     pub fn interval(&self) -> u64 {
-        self.interval.unwrap_or(10)
+        self.interval.unwrap_or(10).max(1)
     }
 }
 
@@ -118,7 +118,7 @@ impl TSPollerConfig {
     }
 
     pub fn interval(&self) -> u64 {
-        self.interval.unwrap_or(10)
+        self.interval.unwrap_or(10).max(1)
     }
 }
 
@@ -135,5 +135,112 @@ impl OTelAttributeProvider for PollerConfig {
 impl OTelAttributeProvider for TSPollerConfig {
     fn otel_attributes(&self) -> OTelAttributes {
         self.otel_attributes.clone().unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use config::FileFormat;
+    use serde_json::json;
+
+    fn poller(value: Value) -> PollerConfig {
+        serde_json::from_value(value).unwrap()
+    }
+
+    fn tspoller(value: Value) -> TSPollerConfig {
+        serde_json::from_value(value).unwrap()
+    }
+
+    #[test]
+    fn poller_config_deserializes_optional_fields_and_attributes() {
+        let config = poller(json!({
+            "api_query": "api/v1/example",
+            "api_method": "post",
+            "api_body": "{\"Enabled\":true}",
+            "aggregator": "result_count",
+            "aggregator_options": { "field": "Count" },
+            "name": "example.count",
+            "otel_attributes": { "site": "lab" },
+            "enrichers": ["server"],
+            "interval": 30
+        }));
+
+        assert_eq!(config.api_query, "api/v1/example");
+        assert_eq!(config.api_method.as_deref(), Some("post"));
+        assert_eq!(config.api_body.as_deref(), Some("{\"Enabled\":true}"));
+        assert_eq!(config.interval(), 30);
+        assert_eq!(
+            config.otel_attributes().get("site").map(String::as_str),
+            Some("lab")
+        );
+        assert_eq!(
+            config.enrichers.as_deref(),
+            Some(["server".to_string()].as_slice())
+        );
+    }
+
+    #[test]
+    fn poller_config_defaults_interval_and_attributes() {
+        let config = poller(json!({
+            "api_query": "api/v1/example",
+            "aggregator": "count_results",
+            "name": "example.count"
+        }));
+
+        assert_eq!(config.interval(), 10);
+        assert!(config.otel_attributes().is_empty());
+    }
+
+    #[test]
+    fn zero_intervals_are_clamped_to_one_second() {
+        let poller = poller(json!({
+            "api_query": "api/v1/example",
+            "aggregator": "result_count",
+            "name": "example.count",
+            "interval": 0
+        }));
+        let tspoller = tspoller(json!({
+            "name": "example.value",
+            "datasource": "example",
+            "dimensions": [],
+            "field_names": [],
+            "interval": 0
+        }));
+
+        assert_eq!(poller.interval(), 1);
+        assert_eq!(tspoller.interval(), 1);
+    }
+
+    #[test]
+    fn global_config_trims_key_id() {
+        let config: GlobalConfig = serde_json::from_value(json!({
+            "key_file": "key.pem",
+            "key_id": "  key-id/1\n",
+            "otel_collector_endpoint": "http://localhost:4317"
+        }))
+        .unwrap();
+
+        assert_eq!(config.key_id(), "key-id/1");
+        assert!(config.pollers.is_none());
+        assert!(config.tspollers.is_none());
+        assert!(config.enrichers.is_none());
+    }
+
+    #[test]
+    fn example_config_deserializes() {
+        let source = concat!(
+            "key_file = \"test-key.pem\"\nkey_id = \"test-key\"\n",
+            include_str!("../../examples/intersight_otel.toml")
+        );
+        let config: GlobalConfig = Config::builder()
+            .add_source(File::from_str(source, FileFormat::Toml))
+            .build()
+            .unwrap()
+            .try_deserialize()
+            .unwrap();
+
+        assert!(!config.pollers.unwrap().is_empty());
+        assert!(!config.tspollers.unwrap().is_empty());
     }
 }

@@ -4,7 +4,7 @@ use ring::signature::{self, EcdsaKeyPair, RsaKeyPair};
 #[derive(Debug)]
 pub enum Signer {
     Rsa(Box<RsaKeyPair>),
-    Ecdsa(EcdsaKeyPair),
+    Ecdsa(Box<EcdsaKeyPair>),
 }
 
 impl Signer {
@@ -26,7 +26,7 @@ impl Signer {
                         SignerError::KeyError(format!("error decoding EC private key: {}", e))
                     })?;
 
-            return Ok(Signer::Ecdsa(keypair));
+            return Ok(Signer::Ecdsa(Box::new(keypair)));
         }
 
         Err(SignerError::KeyError("unsupported key type".to_string()))

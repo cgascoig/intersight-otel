@@ -1026,6 +1026,7 @@ name = "intersight_api"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "http",
  "http-signature-normalization-reqwest",
  "httpdate",
  "log",

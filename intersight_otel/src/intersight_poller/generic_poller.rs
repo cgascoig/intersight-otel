@@ -121,3 +121,70 @@ impl Aggregator for ResultCountAggregator {
         vec![ret]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn assert_single_metric(batch: IntersightMetricBatch, name: &str, value: f64) {
+        assert_eq!(batch.len(), 1);
+        assert!(batch[0].attributes.is_empty());
+        assert!(batch[0].start_time.is_none());
+        assert_eq!(batch[0].metrics.len(), 1);
+
+        let metric = &batch[0].metrics[0];
+        assert_eq!(metric.name, name);
+        assert_eq!(metric.value, value);
+        assert!(metric.attributes.is_empty());
+    }
+
+    #[test]
+    fn result_count_aggregator_extracts_integer_count() {
+        let aggregator = ResultCountAggregator::new("objects.total".to_string());
+
+        assert_single_metric(
+            aggregator.aggregate(json!({ "Count": 42 })),
+            "objects.total",
+            42.0,
+        );
+    }
+
+    #[test]
+    fn result_count_aggregator_rejects_missing_or_invalid_count() {
+        let aggregator = ResultCountAggregator::new("objects.total".to_string());
+
+        assert!(aggregator.aggregate(json!({})).is_empty());
+        assert!(aggregator.aggregate(json!({ "Count": "42" })).is_empty());
+        assert!(aggregator.aggregate(json!({ "Count": 1.5 })).is_empty());
+        assert!(aggregator
+            .aggregate(json!({ "Count": 9_223_372_036_854_775_808_u64 }))
+            .is_empty());
+    }
+
+    #[test]
+    fn result_counting_aggregator_counts_results() {
+        let aggregator = ResultCountingAggregator::new("objects.returned".to_string());
+
+        assert_single_metric(
+            aggregator.aggregate(json!({ "Results": [{}, {}, {}] })),
+            "objects.returned",
+            3.0,
+        );
+        assert_single_metric(
+            aggregator.aggregate(json!({ "Results": [] })),
+            "objects.returned",
+            0.0,
+        );
+    }
+
+    #[test]
+    fn result_counting_aggregator_rejects_missing_or_non_array_results() {
+        let aggregator = ResultCountingAggregator::new("objects.returned".to_string());
+
+        assert!(aggregator.aggregate(json!({})).is_empty());
+        assert!(aggregator
+            .aggregate(json!({ "Results": { "Count": 2 } }))
+            .is_empty());
+    }
+}
