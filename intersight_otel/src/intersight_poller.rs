@@ -203,6 +203,7 @@ fn add_otel_attributes(batch: &mut IntersightMetricBatch, config: &impl OTelAttr
                 value: Some(AnyValue {
                     value: Some(any_value::Value::StringValue(v)),
                 }),
+                key_strindex: 0,
             })
         }
     }

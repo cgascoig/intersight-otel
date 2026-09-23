@@ -97,6 +97,7 @@ impl AttributeEnricher {
                         value: Some(AnyValue {
                             value: Some(any_value::Value::StringValue(attr_val)),
                         }),
+                        key_strindex: 0,
                     });
                 }
                 enriched += 1;
@@ -288,6 +289,7 @@ pQ8EfDaxnEFVuY7Xa8i/qr7mmXo5E+d0TrxkB1bqtwaJJ8ojaW5G/PIkU3aTC6uV
             value: Some(AnyValue {
                 value: Some(any_value::Value::StringValue(value.to_string())),
             }),
+            key_strindex: 0,
         }
     }
 
@@ -418,6 +420,7 @@ pQ8EfDaxnEFVuY7Xa8i/qr7mmXo5E+d0TrxkB1bqtwaJJ8ojaW5G/PIkU3aTC6uV
                 value: Some(AnyValue {
                     value: Some(any_value::Value::IntValue(42)),
                 }),
+                key_strindex: 0,
             }],
             ..Default::default()
         }];

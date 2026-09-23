@@ -25,11 +25,11 @@ chrono = "0.4"
 # opentelemetry-semantic-conventions = { version = "0.12.0"}
 # futures-util = { version = "0.3", default-features = false, features = ["std"] }
 
-opentelemetry_api = { version = "0.20.0", features = ["metrics"] }
-opentelemetry-proto = { version = "0.27.0", features = [
+opentelemetry_api = { package = "opentelemetry", version = "0.33.0", features = ["metrics"] }
+opentelemetry-proto = { version = "0.33.0", features = [
     "gen-tonic",
     "metrics",
 ] }
-tonic = "0.12.3"
+tonic = "0.14.6"
 regex = "1"
 serde_json_path = "0.7"

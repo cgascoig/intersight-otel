@@ -75,6 +75,7 @@ fn response_to_metric_batch(
                                             .unwrap_or_else(|| v.to_string()),
                                     )),
                                 }),
+                                key_strindex: 0,
                             })
                         }
                     }

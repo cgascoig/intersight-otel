@@ -94,6 +94,7 @@ impl From<IntersightResourceMetrics> for ResourceMetrics {
                     value: Some(AnyValue {
                         value: Some(any_value::Value::StringValue(value)),
                     }),
+                    key_strindex: 0,
                 })
                 .collect();
             metrics.push(Metric {
@@ -139,6 +140,7 @@ impl From<IntersightResourceMetrics> for ResourceMetrics {
             value: Some(AnyValue {
                 value: Some(any_value::Value::StringValue("intersight-otel".to_string())),
             }),
+            key_strindex: 0,
         });
         ResourceMetrics {
             resource: Some(Resource {
@@ -173,6 +175,7 @@ mod tests {
             value: Some(AnyValue {
                 value: Some(any_value::Value::StringValue(value.to_string())),
             }),
+            key_strindex: 0,
         }
     }
 
