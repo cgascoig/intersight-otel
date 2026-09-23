@@ -188,8 +188,8 @@ mod tests {
 
     #[test]
     fn converts_resource_and_metric_data_to_otlp() {
-        let start_time = SystemTime::UNIX_EPOCH + Duration::from_nanos(1_234);
-        let time = SystemTime::UNIX_EPOCH + Duration::from_nanos(5_678);
+        let start_time = SystemTime::UNIX_EPOCH + Duration::from_nanos(1_200);
+        let time = SystemTime::UNIX_EPOCH + Duration::from_nanos(5_600);
         let metric = IntersightMetric::new(
             "intersight.power.watts",
             42.5,
@@ -221,8 +221,8 @@ mod tests {
 
         let point = gauge_data_point(&metrics[0]);
         assert_eq!(point.value, Some(Value::AsDouble(42.5)));
-        assert_eq!(point.start_time_unix_nano, 1_234);
-        assert_eq!(point.time_unix_nano, 5_678);
+        assert_eq!(point.start_time_unix_nano, 1_200);
+        assert_eq!(point.time_unix_nano, 5_600);
         assert_eq!(
             point.attributes,
             vec![
